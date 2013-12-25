@@ -4,6 +4,9 @@
 import copy
 from libopenttd.util import six
 
+OPTIONS_DEFAULT_NAMES = (
+    )
+
 class PacketOptions(object):
     def __init__(self, meta):
         self.meta = meta
@@ -13,6 +16,18 @@ class PacketOptions(object):
         cls._meta = self
         self.packet = cls
         self.pid = cls.pid
+
+        if self.meta:
+            meta_attrs = self.meta.__dict__.copy()
+            for name in self.meta.__dict:
+                if name.startswith('_'):
+                    del meta_attrs[name]
+            for attr_name in OPTIONS_DEFAULT_NAMES:
+                if attr_name in meta_attrs:
+                    setattr(self, attr_name, meta_attrs.pop(attr_name))
+                elif hasattr(self.meta, attr_name):
+                    setattr(self, attr_name, getattr(self.meta, attr_name))
+        del self.meta
 
     def add_field(self, field):
         self.fields.append(field)
