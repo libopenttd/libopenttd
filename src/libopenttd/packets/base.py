@@ -2,7 +2,6 @@
 # Some parts (well, a quite a lot actually) is inspired by Django's ModelBase.
 #
 import copy
-from libopenttd.util import six
 
 OPTIONS_DEFAULT_NAMES = (
     )
