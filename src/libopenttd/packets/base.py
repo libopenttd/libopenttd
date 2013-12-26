@@ -13,6 +13,39 @@ OPTIONS_DEFAULT_NAMES = (
     'abstract', 'direction', 'protocol', 'override', 'virtual', 'force_virtual',
     )
 
+class PacketManager(object):
+    def __init__(self):
+        self.packet = None
+        self.opts = None
+
+    def contribute_to_class(self, cls, name):
+        self.packet = cls
+        self.opts = cls._meta
+        setattr(cls, name, self)
+
+    def from_data(self, data, index = 0):
+        all_fields = {}
+
+        for field in self.opts.parsing_fields:
+            fielddata, length = field.read_bytes(data, index)
+            index += length
+            all_fields.update(fielddata)
+
+        obj = self.packet()
+        for field in self.opts.fields:
+            setattr(obj, field.name, all_fields.get(field.name))
+        return obj
+
+    def to_data(self, packet):
+
+        data = dict([(field.name, getattr(packet, field.name, None)) for field in self.opts.fields])
+
+        segments = []
+        for field in self.opts.parsing_fields:
+            segments.append(field.write_bytes(data))
+
+        return ''.join(segments)
+
 class PacketOptions(object):
     def __init__(self, meta, name):
         self.direction = Direction.BOTH
@@ -164,6 +197,7 @@ class PacketBase(type):
     def _prepare(cls):
         opts = cls._meta
         opts._prepare(cls)
+        cls.add_to_class('manager', PacketManager())
 
     def add_to_class(cls, name, value):
         if hasattr(value, 'contribute_to_class'):

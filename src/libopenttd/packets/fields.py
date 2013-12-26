@@ -1,4 +1,5 @@
 from .base import FieldBase
+from .exceptions import InvalidReturnCount
 from libopenttd.utils import six
 
 from struct import Struct
@@ -43,6 +44,7 @@ class Field(FieldBase):
 
 class StructField(Field):
     struct_type = None
+    field_count = 1
 
     _structCache = {}
 
@@ -64,27 +66,52 @@ class StructField(Field):
     def __init__(self, *args, **kwargs):
         super(StructField, self).__init__(*args, **kwargs)
         self.struct = None
+        self.length = 0
 
     def can_merge(self, other):
         return isinstance(other, StructField)
 
     def _prepare(self):
         fmt = self.struct_type
+        amt = self.field_count
         for neigh in self.neighbours:
             fmt += neigh.struct_type
+            amt += neigh.field_count
         self.struct = StructField.get_struct(fmt)
+        self.length = self.struct.size
+        self.total_fields = amt
 
     def from_python(self, value):
         return value
 
     def write_bytes(self, data):
-        pass
+        values = []
+        for field in [self,] + self.neighbours:
+            value = data.get(field.name)
+            if field.field_count == 1:
+                values.append(field.from_python(value))
+            else:
+                values.extend(field.from_python(value))
+        packed = self.struct.pack(*values)
+        return packed
 
     def to_python(self, value):
         return value
 
     def read_bytes(self, data, index):
-        pass
+        unpack = self.struct.unpack_from(data, index)
+        if len(unpack) != self.total_fields:
+            raise InvalidReturnCount("%d items were returned, but %d were expected" % (len(unpack), self.total_fields))
+        read = {}
+
+        i = 0
+        for field in [self,] + self.neighbours:
+            if field.field_count == 1:
+                read[field.name] = field.to_python(unpack[i])
+            else:
+                read[field.name] = field.to_python(unpack[i:i+field.field_count])
+            i += field.field_count
+        return read, self.length
 
 class CharField(StructField):
     struct_type = 'c'
