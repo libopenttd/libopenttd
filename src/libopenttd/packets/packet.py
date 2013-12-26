@@ -15,3 +15,6 @@ class Packet(six.with_metaclass(PacketBase)):
         if six.PY2 and hasattr(self, '__unicode__'):
             return six.text_type(self).encode('utf-8')
         return '%s packet' % self.__class__.__name__
+
+    class Meta:
+        abstract = True
