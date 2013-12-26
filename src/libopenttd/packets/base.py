@@ -8,11 +8,13 @@ from .enums import Direction, Protocol
 from .registry import registry
 
 OPTIONS_DEFAULT_NAMES = (
-    'abstract',
+    'abstract', 'direction', 'protocol',
     )
 
 class PacketOptions(object):
     def __init__(self, meta, name):
+        self.direction = Direction.BOTH
+        self.protocol = Protocol.NONE
         self.name = name
         self.meta = meta
         self.abstract = False
@@ -67,12 +69,8 @@ class PacketBase(type):
         module = attrs.pop('__module__')
         new_class = super_new(mcs, name, bases, {'__module__': module})
         pid = attrs.pop('pid', getattr(new_class, 'pid', -1)) # Todo: Add exception when no PID is set.
-        proto = attrs.pop('proto', getattr(new_class, 'proto', Protocol.NONE))
-        direction = attrs.pop('direction', getattr(new_class, 'direction', Direction.BOTH))
 
         new_class.add_to_class('pid', pid)
-        new_class.add_to_class('proto', proto)
-        new_class.add_to_class('direction', direction)
 
         attr_meta = attrs.pop('Meta', None)
         abstract = getattr(attr_meta, 'abstract', False)
@@ -103,11 +101,11 @@ class PacketBase(type):
         if abstract:
             print "Returning abstract class", new_class
             attr_meta.abstract = False
-            new_class.Meta = attr_meta
+            new_class.Meta = attr_meta #pylint: disable=C0103
             return new_class
 
         new_class._meta.registry.register_packet(new_class)
-        return new_class
+
         return new_class._meta.registry.get_registered_packet(new_class)
 
     def _prepare(cls):

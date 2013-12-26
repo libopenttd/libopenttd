@@ -12,13 +12,13 @@ class PacketRegistry(object):
         self.all_packets = defaultdict(lambda: defaultdict(dict))
 
     def register_packet(self, packet):
-        directions = packet.direction
-        if packet.direction & Direction.BOTH == Direction.BOTH:
+        directions = [packet._meta.direction]
+        if packet._meta.direction & Direction.BOTH == Direction.BOTH:
             directions = [Direction.SEND, Direction.RECV, Direction.BOTH]
         for direction in directions:
-            if packet.pid in self.all_packets[packet.proto][direction]:
+            if packet.pid in self.all_packets[packet._meta.protocol][direction]:
                 # We don't re-register packets for a specific PID
-                existing = self.all_packets[packet.proto][direction][packet.pid]
+                existing = self.all_packets[packet._meta.protocol][direction][packet.pid]
                 if existing == packet:
                     continue
                 print packet
@@ -26,9 +26,9 @@ class PacketRegistry(object):
                 warnings.warn("Packet class '%s' collides with class '%s' for the direction '%s' and protocol '%s'. "
                                 "as a result, this packet will not register." % (packet._meta.name,
                                 existing._meta.name, Direction.get_name(direction), 
-                                Protocol.get_name(packet.proto)))
+                                Protocol.get_name(packet._meta.protocol)))
                 continue
-            self.all_packets[packet.proto][direction][packet.pid] = packet
+            self.all_packets[packet._meta.protocol][direction][packet.pid] = packet
 
     #Optimize this method for speed
     @lru_cache.lru_cache(maxsize=None)
@@ -46,7 +46,7 @@ class PacketRegistry(object):
         return packets.values()
 
     def get_registered_packet(self, packet):
-        return self.get_packet(packet.proto, packet.direction, packet.pid)
+        return self.get_packet(packet._meta.protocol, packet._meta.direction, packet.pid)
 
     def get_packet(self, protocol, direction, pid):
         return self.all_packets[protocol][direction].get(pid)
