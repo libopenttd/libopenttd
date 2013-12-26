@@ -8,7 +8,7 @@ from .enums import Direction, Protocol
 from .registry import registry
 
 OPTIONS_DEFAULT_NAMES = (
-    'abstract', 'direction', 'protocol', 'override',
+    'abstract', 'direction', 'protocol', 'override', 'virtual',
     )
 
 class PacketOptions(object):
@@ -81,6 +81,7 @@ class PacketBase(type):
 
         attr_meta = attrs.pop('Meta', None)
         abstract = getattr(attr_meta, 'abstract', False)
+        virtual = getattr(attr_meta, 'virtual', False)
         override = getattr(attr_meta, 'override', False)
         if not attr_meta:
             meta = getattr(new_class, 'Meta', None)
@@ -104,16 +105,26 @@ class PacketBase(type):
                     # Add non-overlapping fields to our registry
                     new_class.add_to_class(field.name, copy.deepcopy(field))
 
-        new_class._prepare()
-
         if abstract:
-            print "Returning abstract class", new_class
+            # Abstract packets are not prepared, instead, they are returned as-is.
             attr_meta.abstract = False
             new_class.Meta = attr_meta #pylint: disable=C0103
             return new_class
+        
+        new_class._prepare()
+
         if override:
+            # Override packets forcefully override themselves in the packet registry
+            #  but to prevent their children to do the same, we force it back to False
+            #  before we register it
             attr_meta.override = False
             new_class.Meta = attr_meta
+        if virtual:
+            # Virtual packets are prepared, but not registered, this allows them to be
+            #  used as fields of other packets
+            attr_meta.virtual = False
+            new_class.Meta = attr_meta
+            return new_class
 
         new_class._meta.registry.register_packet(new_class)
 
@@ -132,7 +143,7 @@ class PacketBase(type):
     class Meta:
         abstract = True
 
-class PacketFieldBase(object):
+class FieldBase(object):
     def __init__(self, name = None, is_struct_field = False):
         self.name = name
         self.is_struct_field = is_struct_field
@@ -144,3 +155,4 @@ class PacketFieldBase(object):
     def contribute_to_class(self, cls, name):
         self.set_attributes_from_name(name)
         cls._meta.add_field(self)
+
