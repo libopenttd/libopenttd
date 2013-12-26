@@ -5,6 +5,7 @@ import copy
 
 from .enums import Direction, Protocol
 from .registry import registry
+from libopenttd.utils.six.moves import range 
 
 from operator import attrgetter
 
@@ -22,6 +23,7 @@ class PacketOptions(object):
         self.override = False
         self.fields = []
         self.fields_sorted = []
+        self.parsing_fields = []
 
     def contribute_to_class(self, cls, name):
         cls._meta = self
@@ -44,6 +46,25 @@ class PacketOptions(object):
 
     def _prepare(self, packet):
         self.fields_sorted = sorted(self.fields, key = attrgetter("ordering"))
+
+        # We iterate over our fields list, and merge the fields that are both adjacent
+        #  and inform us they can merge together.
+        iterator = iter(self.fields_sorted)
+        done = object()
+
+        last_field = None
+        field = next(iterator, done)
+        while field is not done:
+            if last_field and last_field.can_merge(field):
+                last_field.merge(field)
+                field = next(iterator, done)
+                continue
+            last_field = field
+            self.parsing_fields.append(field)
+            field = next(iterator, done)
+        # Next up we inform all merged fields that they should prepare for action.
+        for field in self.parsing_fields:
+            field._prepare()
 
         #Signal back that we've done our preparations
         packet._prepared = True
