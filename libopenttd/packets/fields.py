@@ -1,8 +1,16 @@
 from .base import FieldBase
-from .exceptions import InvalidReturnCount
+from .exceptions import InvalidReturnCount, InvalidFieldData
 from libopenttd.utils import six
 
 from struct import Struct
+
+def between(value, minimum, maximum):
+    return value >= minimum and value <= maximum
+
+def _between(minimum, maximum):
+    def _inner(self, value):
+        return between(value, minimum, maximum)
+    return _inner
 
 class Field(FieldBase):
     default_value = None
@@ -18,6 +26,9 @@ class Field(FieldBase):
 
     def from_python(self, value):
         raise NotImplementedError()
+
+    def validate(self, value):
+        return True
 
     def write_bytes(self, data):
         raise NotImplementedError()
@@ -42,6 +53,32 @@ class Field(FieldBase):
         if six.PY2 and hasattr(self, '__unicode__'):
             return six.text_type(self).encode('utf-8')
         return '%s field' % self.name
+
+class StringField(Field):
+    def can_merge(self, other):
+        return isinstance(other, StringField)
+
+    def from_python(self, value):
+        return six.binary_type(value + '\x00')
+
+    def write_bytes(self, data):
+        values = ''
+        for field in [self,] + self.neighbours:
+            value = data.get(field.name)
+            values += field.from_python(value)
+        return values
+
+    def to_python(self, value):
+        return six.text_type(value.rstrip('\x00'))
+
+    def read_bytes(self, data, index):
+        start = index
+        values = {}
+        for field in [self,] + self.neighbours:
+            end = data.find('\x00', index)
+            values[field.name] = field.to_python(data[index:end])
+            index = end+1
+        return values, index - start
 
 class StructField(Field):
     struct_type = None
@@ -83,6 +120,8 @@ class StructField(Field):
         self.total_fields = amt
 
     def from_python(self, value):
+        if not self.validate(value):
+            raise InvalidFieldData("The value '%r' for field '%s' is invalid" % (value, self.name))
         return value
 
     def write_bytes(self, data):
@@ -122,45 +161,64 @@ class BooleanField(StructField):
     def to_python(self, value):
         return bool(value)
 
+    def validate(self, value):
+        return value in (True, False)
+
     def from_python(self, value):
         return 1 if value else 0
 
 class UByteField(StructField):
     struct_type = 'B'
 
+    validate = _between(0, 256)
+
 ByteField = UInt8Field = UByteField
 
 class SByteField(StructField):
     struct_type = 'b'
+
+    validate = _between(-0x80, 0x7F)
 
 Int8Field = SByteField
 
 class UShortField(StructField):
     struct_type = 'H'
 
+    validate = _between(0, 0xFFFF)
+
 UInt16Field = UShortField
 
 class SShortField(StructField):
     struct_type = 'h'
+
+    validate = _between(-0x8000, 0x7FFF)
 
 Int16Field = SShortField
 
 class UIntField(StructField):
     struct_type = 'I'
 
+    validate = _between(0, 0xFFFFFFFF)
+
 ULongField = UInt32Field = UIntField
 
 class SIntField(StructField):
     struct_type = 'i'
+
+    validate = _between(-0x80000000, 0x7FFFFFFF)
 
 LongField = Int32Field = SIntField
 
 class ULongLongField(StructField):
     struct_type = 'Q'
 
+    validate = _between(0, 0xFFFFFFFFFFFFFFFF)
+
 UInt64Field = ULongLongField
 
 class SLongLongField(StructField):
     struct_type = 'q'
+
+    validate = _between(-0x8000000000000000, 0x7FFFFFFFFFFFFFFF)
 
 Int64Field = SLongLongField

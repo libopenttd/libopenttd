@@ -3,3 +3,6 @@ class InvalidReturnCount(Exception):
 
 class InvalidFieldName(Exception):
     pass
+
+class InvalidFieldData(Exception):
+    pass
