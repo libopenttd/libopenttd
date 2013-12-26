@@ -27,3 +27,5 @@ class Field(FieldBase):
 class StructField(Field):
     struct_type = None
 
+    def can_merge(self, other):
+        return isinstance(other, StructField)
