@@ -14,10 +14,16 @@ class Field(FieldBase):
     def merge(self, other):
         self.neighbours.append(other)
 
-    def from_python(self, data):
+    def from_python(self, value):
         raise NotImplementedError()
 
-    def to_python(self, data, index):
+    def write_bytes(self, data):
+        raise NotImplementedError()
+
+    def to_python(self, value):
+        raise NotImplementedError()
+
+    def read_bytes(self, data, index):
         raise NotImplementedError()
 
     def _prepare(self):
@@ -68,8 +74,65 @@ class StructField(Field):
             fmt += neigh.struct_type
         self.struct = StructField.get_struct(fmt)
 
-    def from_python(self, data):
+    def from_python(self, value):
+        return value
+
+    def write_bytes(self, data):
         pass
 
-    def to_python(self, data, index):
+    def to_python(self, value):
+        return value
+
+    def read_bytes(self, data, index):
         pass
+
+class CharField(StructField):
+    struct_type = 'c'
+
+class BooleanField(StructField):
+    struct_type = 'c'
+    def to_python(self, value):
+        return bool(value)
+
+    def from_python(self, value):
+        return 1 if value else 0
+
+class UByteField(StructField):
+    struct_type = 'B'
+
+ByteField = UInt8Field = UByteField
+
+class SByteField(StructField):
+    struct_type = 'b'
+
+Int8Field = SByteField
+
+class UShortField(StructField):
+    struct_type = 'H'
+
+UInt16Field = UShortField
+
+class SShortField(StructField):
+    struct_type = 'h'
+
+Int16Field = SShortField
+
+class UIntField(StructField):
+    struct_type = 'I'
+
+ULongField = UInt32Field = UIntField
+
+class SIntField(StructField):
+    struct_type = 'i'
+
+LongField = Int32Field = SIntField
+
+class ULongLongField(StructField):
+    struct_type = 'Q'
+
+UInt64Field = ULongLongField
+
+class SLongLongField(StructField):
+    struct_type = 'q'
+
+Int64Field = LongLongField
