@@ -4,14 +4,13 @@
 import copy
 
 from .enums import Direction, Protocol
-
 from .registry import registry
+
+from operator import attrgetter
 
 OPTIONS_DEFAULT_NAMES = (
     'abstract', 'direction', 'protocol', 'override', 'virtual', 'force_virtual',
     )
-
-from operator import attrgetter
 
 class PacketOptions(object):
     def __init__(self, meta, name):
