@@ -11,6 +11,8 @@ OPTIONS_DEFAULT_NAMES = (
     'abstract', 'direction', 'protocol', 'override', 'virtual', 'force_virtual',
     )
 
+from operator import attrgetter
+
 class PacketOptions(object):
     def __init__(self, meta, name):
         self.direction = Direction.BOTH
@@ -20,6 +22,7 @@ class PacketOptions(object):
         self.abstract = False
         self.override = False
         self.fields = []
+        self.fields_sorted = []
 
     def contribute_to_class(self, cls, name):
         cls._meta = self
@@ -41,6 +44,8 @@ class PacketOptions(object):
         self.registry = registry
 
     def _prepare(self, packet):
+        self.fields_sorted = sorted(self.fields, key = attrgetter("ordering"))
+
         #Signal back that we've done our preparations
         packet._prepared = True
 
@@ -109,8 +114,6 @@ class PacketBase(type):
                 if field.name not in field_names:
                     # Add non-overlapping fields to our registry
                     new_class.add_to_class(field.name, copy.deepcopy(field))
-
-        print locals()
 
         if abstract:
             # Abstract packets are not prepared, instead, they are returned as-is.
