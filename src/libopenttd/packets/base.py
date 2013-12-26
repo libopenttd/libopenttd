@@ -152,9 +152,9 @@ class PacketBase(type):
         abstract = True
 
 class FieldBase(object):
-    def __init__(self, name = None, is_struct_field = False):
+    def __init__(self, name = None, ordering = None):
         self.name = name
-        self.is_struct_field = is_struct_field
+        self.ordering = ordering
 
     def set_attributes_from_name(self, name):
         if not self.name:
