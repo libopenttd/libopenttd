@@ -156,6 +156,12 @@ class FieldBase(object):
         self.name = name
         self.ordering = ordering
 
+    def can_merge(self, other):
+        return False
+
+    def merge(self, other):
+        pass
+
     def set_attributes_from_name(self, name):
         if not self.name:
             self.name = name
@@ -163,4 +169,3 @@ class FieldBase(object):
     def contribute_to_class(self, cls, name):
         self.set_attributes_from_name(name)
         cls._meta.add_field(self)
-
