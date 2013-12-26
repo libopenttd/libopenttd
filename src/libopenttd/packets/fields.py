@@ -135,4 +135,4 @@ UInt64Field = ULongLongField
 class SLongLongField(StructField):
     struct_type = 'q'
 
-Int64Field = LongLongField
+Int64Field = SLongLongField
