@@ -1,4 +1,4 @@
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from libopenttd.utils import lru_cache
 
 from .enums import Protocol, Direction
