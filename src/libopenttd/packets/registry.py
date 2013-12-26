@@ -51,4 +51,4 @@ class PacketRegistry(object):
     def get_packet(self, protocol, direction, pid):
         return self.all_packets[protocol][direction].get(pid)
 
-registry = PacketRegistry()
+registry = PacketRegistry() #pylint: disable=C0103
