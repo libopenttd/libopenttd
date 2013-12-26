@@ -8,7 +8,7 @@ from .enums import Direction, Protocol
 from .registry import registry
 
 OPTIONS_DEFAULT_NAMES = (
-    'abstract', 'direction', 'protocol', 'override', 'virtual',
+    'abstract', 'direction', 'protocol', 'override', 'virtual', 'force_virtual',
     )
 
 class PacketOptions(object):
@@ -80,6 +80,7 @@ class PacketBase(type):
         new_class.add_to_class('pid', pid)
 
         attr_meta = attrs.pop('Meta', None)
+
         abstract = getattr(attr_meta, 'abstract', False)
         virtual = getattr(attr_meta, 'virtual', False)
         override = getattr(attr_meta, 'override', False)
@@ -87,6 +88,10 @@ class PacketBase(type):
             meta = getattr(new_class, 'Meta', None)
         else:
             meta = attr_meta
+        base_meta = getattr(new_class, '_meta', None)
+
+        force_virtual = getattr(attr_meta, 'force_virtual', getattr(base_meta, 'force_virtual', False))
+        
         new_class.add_to_class('_meta', PacketOptions(meta, name))
 
         # Add all attributes to the class.
@@ -105,6 +110,8 @@ class PacketBase(type):
                     # Add non-overlapping fields to our registry
                     new_class.add_to_class(field.name, copy.deepcopy(field))
 
+        print locals()
+
         if abstract:
             # Abstract packets are not prepared, instead, they are returned as-is.
             attr_meta.abstract = False
@@ -119,11 +126,12 @@ class PacketBase(type):
             #  before we register it
             attr_meta.override = False
             new_class.Meta = attr_meta
-        if virtual:
+        if virtual or force_virtual:
             # Virtual packets are prepared, but not registered, this allows them to be
             #  used as fields of other packets
-            attr_meta.virtual = False
-            new_class.Meta = attr_meta
+            if virtual:
+                attr_meta.virtual = False
+                new_class.Meta = attr_meta
             return new_class
 
         new_class._meta.registry.register_packet(new_class)
