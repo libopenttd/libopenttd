@@ -1,7 +1,7 @@
-from .base import PacketFieldBase
+from .base import FieldBase
 from libopenttd.utils import six
 
-class Field(PacketFieldBase):
+class Field(FieldBase):
     def __repr__(self):
         try:
             utf = six.text_type(self)
