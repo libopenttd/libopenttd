@@ -4,8 +4,8 @@ from libopenttd.utils import six
 from struct import Struct
 
 class Field(FieldBase):
-    def __init__(self, name = None, ordering = -1, *args, **kwargs):
-        super(Field, self).__init__(name = name, ordering = ordering, *args, **kwargs)
+    def __init__(self, ordering = -1, *args, **kwargs):
+        super(Field, self).__init__(ordering = ordering, *args, **kwargs)
         self.neighbours = []
 
     def can_merge(self, other):

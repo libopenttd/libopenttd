@@ -175,8 +175,8 @@ class PacketBase(type):
         abstract = True
 
 class FieldBase(object):
-    def __init__(self, name = None, ordering = None):
-        self.name = name
+    def __init__(self, ordering = None):
+        self.name = None
         self.ordering = ordering
 
     def can_merge(self, other):
