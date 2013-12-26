@@ -3,12 +3,19 @@
 #
 import copy
 
+from .enums import Direction, Protocol
+
+from .registry import registry
+
 OPTIONS_DEFAULT_NAMES = (
+    'abstract',
     )
 
 class PacketOptions(object):
-    def __init__(self, meta):
+    def __init__(self, meta, name):
+        self.name = name
         self.meta = meta
+        self.abstract = False
         self.fields = []
 
     def contribute_to_class(self, cls, name):
@@ -18,7 +25,7 @@ class PacketOptions(object):
 
         if self.meta:
             meta_attrs = self.meta.__dict__.copy()
-            for name in self.meta.__dict:
+            for name in self.meta.__dict__:
                 if name.startswith('_'):
                     del meta_attrs[name]
             for attr_name in OPTIONS_DEFAULT_NAMES:
@@ -28,13 +35,17 @@ class PacketOptions(object):
                     setattr(self, attr_name, getattr(self.meta, attr_name))
         del self.meta
 
+        self.registry = registry
+
+    def _prepare(self, packet):
+        #Signal back that we've done our preparations
+        packet._prepared = True
+
     def add_field(self, field):
         self.fields.append(field)
 
 class PacketBase(type):
     def __new__(mcs, name, bases, attrs):
-        print "__NEW__"
-        print mcs, name, bases, attrs
         super_new = super(PacketBase, mcs).__new__
 
         # six.with_metaclass() inserts an extra class called 'NewBase' in the
@@ -56,13 +67,20 @@ class PacketBase(type):
         module = attrs.pop('__module__')
         new_class = super_new(mcs, name, bases, {'__module__': module})
         pid = attrs.pop('pid', getattr(new_class, 'pid', -1)) # Todo: Add exception when no PID is set.
+        proto = attrs.pop('proto', getattr(new_class, 'proto', Protocol.NONE))
+        direction = attrs.pop('direction', getattr(new_class, 'direction', Direction.BOTH))
+
         new_class.add_to_class('pid', pid)
+        new_class.add_to_class('proto', proto)
+        new_class.add_to_class('direction', direction)
+
         attr_meta = attrs.pop('Meta', None)
+        abstract = getattr(attr_meta, 'abstract', False)
         if not attr_meta:
             meta = getattr(new_class, 'Meta', None)
         else:
             meta = attr_meta
-        new_class.add_to_class('_meta', PacketOptions(meta))
+        new_class.add_to_class('_meta', PacketOptions(meta, name))
 
         # Add all attributes to the class.
         for obj_name, obj in attrs.items():
@@ -80,13 +98,30 @@ class PacketBase(type):
                     # Add non-overlapping fields to our registry
                     new_class.add_to_class(field.name, copy.deepcopy(field))
 
+        new_class._prepare()
+
+        if abstract:
+            print "Returning abstract class", new_class
+            attr_meta.abstract = False
+            new_class.Meta = attr_meta
+            return new_class
+
+        new_class._meta.registry.register_packet(new_class)
         return new_class
-    
+        return new_class._meta.registry.get_registered_packet(new_class)
+
+    def _prepare(cls):
+        opts = cls._meta
+        opts._prepare(cls)
+
     def add_to_class(cls, name, value):
         if hasattr(value, 'contribute_to_class'):
             value.contribute_to_class(cls, name)
         else:
             setattr(cls, name, value)
+
+    class Meta:
+        abstract = True
 
 class PacketFieldBase(object):
     def __init__(self, name = None, is_struct_field = False):
