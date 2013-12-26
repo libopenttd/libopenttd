@@ -1,0 +1,2 @@
+class InvalidReturnCount(Exception):
+    pass
