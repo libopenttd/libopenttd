@@ -5,6 +5,7 @@ from libopenttd.utils import six
 from struct import Struct
 
 class Field(FieldBase):
+    default_value = None
     def __init__(self, ordering = -1, *args, **kwargs):
         super(Field, self).__init__(ordering = ordering, *args, **kwargs)
         self.neighbours = []
