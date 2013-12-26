@@ -47,6 +47,12 @@ class PacketOptions(object):
     def add_field(self, field):
         self.fields.append(field)
 
+    def get_field_by_name(self, name):
+        for field in self.fields:
+            if field.name == name:
+                return field
+        return None
+
 class PacketBase(type):
     def __new__(mcs, name, bases, attrs):
         super_new = super(PacketBase, mcs).__new__
