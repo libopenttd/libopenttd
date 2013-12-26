@@ -37,8 +37,10 @@ class EnumHelper(object):
 
     @classmethod
     def get_name(cls, value):
+        cls._build()
         return cls.__rdict.get(value, None)
 
     @classmethod
     def get_from_name(cls, name):
+        cls._build()
         return cls.__dict.get(name, None)
