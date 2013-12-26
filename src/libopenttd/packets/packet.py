@@ -4,6 +4,9 @@ from libopenttd.utils import six
 class Packet(six.with_metaclass(PacketBase)):
     pid = -1
 
+    def write(self):
+        return self.manager.to_data(self)
+
     def __repr__(self):
         try:
             utf = six.text_type(self)
