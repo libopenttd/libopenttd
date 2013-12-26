@@ -8,7 +8,7 @@ from .enums import Direction, Protocol
 from .registry import registry
 
 OPTIONS_DEFAULT_NAMES = (
-    'abstract', 'direction', 'protocol',
+    'abstract', 'direction', 'protocol', 'override',
     )
 
 class PacketOptions(object):
@@ -18,6 +18,7 @@ class PacketOptions(object):
         self.name = name
         self.meta = meta
         self.abstract = False
+        self.override = False
         self.fields = []
 
     def contribute_to_class(self, cls, name):
@@ -74,6 +75,7 @@ class PacketBase(type):
 
         attr_meta = attrs.pop('Meta', None)
         abstract = getattr(attr_meta, 'abstract', False)
+        override = getattr(attr_meta, 'override', False)
         if not attr_meta:
             meta = getattr(new_class, 'Meta', None)
         else:
@@ -103,6 +105,9 @@ class PacketBase(type):
             attr_meta.abstract = False
             new_class.Meta = attr_meta #pylint: disable=C0103
             return new_class
+        if override:
+            attr_meta.override = False
+            new_class.Meta = attr_meta
 
         new_class._meta.registry.register_packet(new_class)
 

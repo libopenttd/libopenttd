@@ -16,7 +16,7 @@ class PacketRegistry(object):
         if packet._meta.direction & Direction.BOTH == Direction.BOTH:
             directions = [Direction.SEND, Direction.RECV, Direction.BOTH]
         for direction in directions:
-            if packet.pid in self.all_packets[packet._meta.protocol][direction]:
+            if packet.pid in self.all_packets[packet._meta.protocol][direction] and not packet._meta.override:
                 # We don't re-register packets for a specific PID
                 existing = self.all_packets[packet._meta.protocol][direction][packet.pid]
                 if existing == packet:
