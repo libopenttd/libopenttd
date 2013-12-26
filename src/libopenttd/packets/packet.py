@@ -1,5 +1,5 @@
 from .base import PacketBase
-from libopenttd.util import six
+from libopenttd.utils import six
 
 class Packet(six.with_metaclass(PacketBase)):
     pid = -1
