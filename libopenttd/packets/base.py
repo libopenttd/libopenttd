@@ -201,7 +201,7 @@ class PacketBase(type):
 
         new_class._meta.registry.register_packet(new_class)
 
-        return new_class._meta.registry.get_registered_packet(new_class)
+        return new_class
 
     def _prepare(cls):
         opts = cls._meta
