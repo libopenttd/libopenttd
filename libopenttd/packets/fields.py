@@ -13,10 +13,21 @@ def _between(minimum, maximum):
     return _inner
 
 class Field(FieldBase):
-    default_value = None
-    def __init__(self, ordering = -1, *args, **kwargs):
+    default_value   = None
+    validators      = None
+    validate        = None
+    def __init__(self, ordering = -1, validators = None, *args, **kwargs):
         super(Field, self).__init__(ordering = ordering, *args, **kwargs)
         self.neighbours = []
+        if validators:
+            if isinstance(validators, (list, tuple)):
+                self.validators = list(validators)
+            else:
+                self.validators = [validators,]
+        else:
+            self.validators = []
+        if callable(self.validate):
+            self.validators.append(self.validate)
 
     def can_merge(self, other):
         return False
@@ -27,7 +38,9 @@ class Field(FieldBase):
     def from_python(self, value):
         raise NotImplementedError()
 
-    def validate(self, value):
+    def is_valid(self, value):
+        if not all([validator(value) for validator in self.validators]):
+            raise InvalidFieldData("The value '%r' for field '%s' is invalid" % (value, self.name))
         return True
 
     def write_bytes(self, data):
@@ -120,9 +133,8 @@ class StructField(Field):
         self.total_fields = amt
 
     def from_python(self, value):
-        if not self.validate(value):
-            raise InvalidFieldData("The value '%r' for field '%s' is invalid" % (value, self.name))
-        return value
+        if self.is_valid(value):
+            return value
 
     def write_bytes(self, data):
         values = []
