@@ -68,11 +68,19 @@ class Field(FieldBase):
         return '%s field' % self.name
 
 class StringField(Field):
+    def __init__(self, trim_length = None, *args, **kwargs):
+        super(StringField, self).__init__(*args, **kwargs)
+        self.trim_length = trim_length
+
     def can_merge(self, other):
         return isinstance(other, StringField)
 
     def from_python(self, value):
-        return six.binary_type(value + '\x00')
+        if self.trim_length:
+            value = value[:self.trim_length - 1] # allow for the \x00 
+        value = six.binary_type(value + '\x00')
+        if self.is_valid(value):
+            return value
 
     def write_bytes(self, data):
         values = ''
