@@ -12,6 +12,9 @@ from operator import attrgetter
 OPTIONS_DEFAULT_NAMES = (
     'abstract', 'direction', 'protocol', 'override', 'virtual', 'force_virtual',
     )
+OPTIONS_INHERITED = (
+    'protocol', 'direction', 'force_virtual',
+    )
 
 class PacketManager(object):
     def __init__(self):
@@ -59,9 +62,15 @@ class PacketOptions(object):
         self.parsing_fields = []
 
     def contribute_to_class(self, cls, name):
+        base_meta = getattr(cls, '_meta', None)
         cls._meta = self
         self.packet = cls
         self.pid = cls.pid
+
+        for option in OPTIONS_INHERITED:
+            if not hasattr(base_meta, option):
+                continue
+            setattr(self, option, getattr(base_meta, option))
 
         if self.meta:
             meta_attrs = self.meta.__dict__.copy()
