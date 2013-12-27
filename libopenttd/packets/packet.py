@@ -1,18 +1,32 @@
 from .base import PacketBase
 from libopenttd.utils import six
 from .exceptions import InvalidFieldName
+from itertools import izip_longest
 
 class Packet(six.with_metaclass(PacketBase)):
     pid = -1
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         all_names = set([field.name for field in self._meta.fields])
+        data = {}
+
+        if len(args) > len(self._meta.fields):
+            raise IndexError("Number of args exceeds number of fields")
+        for field, arg in izip_longest(self._meta.fields_sorted, args, fillvalue=None):
+            if arg is None:
+                break
+            data[field.name] = arg
+
         for field, value in kwargs.items():
             if field not in all_names:
                 raise InvalidFieldName("Field name '%s' not found, did you mean: %s" % (field, ', '.join(all_names)))
+
+        data.update(kwargs)
+
         for field in self._meta.fields:
-            value = kwargs.get(field.name, field.default_value)
+            value = data.get(field.name, field.default_value)
             setattr(self, field.name, value)
+
 
     def write(self):
         return self.manager.to_data(self)
