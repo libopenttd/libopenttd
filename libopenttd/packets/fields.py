@@ -4,6 +4,11 @@ from libopenttd.utils import six
 
 from struct import Struct
 
+try:
+    import json
+except ImportError:
+    import simplejson as json
+
 def between(value, minimum, maximum):
     return value >= minimum and value <= maximum
 
@@ -100,6 +105,21 @@ class StringField(Field):
             values[field.name] = field.to_python(data[index:end])
             index = end+1
         return values, index - start
+
+class JsonField(StringField):
+    def from_python(self, value):
+        value = json.dumps(value)
+        return super(JsonField, self).from_python(value)
+
+    def to_python(self, value):
+        if isinstance(value, string_types):
+            value = super(JsonField, self).to_python(value)
+            value = json.loads(value)
+        elif isinstance(value, (list, dict, tuple, set)):
+            pass
+        else:
+            value = six.text_type(value)
+        return value
 
 class StructField(Field):
     struct_type = None
