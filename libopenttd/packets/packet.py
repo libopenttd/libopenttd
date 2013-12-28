@@ -17,7 +17,7 @@ class Packet(six.with_metaclass(PacketBase)):
                 break
             data[field.name] = arg
 
-        for field, value in kwargs.items():
+        for field in six.iterkeys(kwargs):
             if field not in all_names:
                 raise InvalidFieldName("Field name '%s' not found, did you mean: %s" % (field, ', '.join(all_names)))
 
