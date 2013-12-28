@@ -83,6 +83,15 @@ class Action(EnumHelper):
     COMPANY_JOIN        = 0x09
     COMPANY_NEW         = 0x0A
 
+    @classmethod
+    def is_valid_admin_chat(cls, value):
+        return value in [
+            Action.SERVER_MESSAGE,
+            Action.CHAT,
+            Action.CHAT_COMPANY,
+            Action.CHAT_CLIENT,
+        ]
+
 class ErrorCode(EnumHelper):
     GENERAL             = 0x00  #< Try to use this one like never
 
