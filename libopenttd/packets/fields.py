@@ -1,4 +1,5 @@
 from .base import FieldBase
+from .constants import NETWORK_GAMESCRIPT_JSON_LENGTH
 from .exceptions import InvalidReturnCount, InvalidFieldData
 from libopenttd.utils import six
 
@@ -120,6 +121,11 @@ class JsonField(StringField):
         else:
             value = six.text_type(value)
         return value
+
+    def validate(self, value):
+        if not isinstance(value, six.string_types):
+            value = self.from_python(value)
+        return len(value) < NETWORK_GAMESCRIPT_JSON_LENGTH
 
 class StructField(Field):
     struct_type = None
