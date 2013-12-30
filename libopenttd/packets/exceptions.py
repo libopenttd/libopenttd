@@ -6,3 +6,6 @@ class InvalidFieldName(Exception):
 
 class InvalidFieldData(Exception):
     pass
+
+class InvalidPacketLayout(Exception):
+    pass
