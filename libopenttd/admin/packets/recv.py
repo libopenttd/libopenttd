@@ -68,4 +68,8 @@ class ClientUpdate(Packet):
 class ClientQuit(Packet):
     pid = 111
     client_id   = packets.UInt32Field(ordering=1)
+
+class ClientError(Packet):
+    pid = 112
+    client_id   = packets.UInt32Field(ordering=1)
     errorcode   = packets.UInt8Field(ordering=2)
