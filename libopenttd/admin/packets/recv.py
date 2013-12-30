@@ -113,7 +113,25 @@ class CompanyEconomy(Packet):
     income      = packets.Int64Field(ordering=4)
     delivered   = packets.UInt16Field(ordering=5)
     history     = packets.RepeatingField(ordering=6, count=2, fields = {
-        'value': packets.Int64Field(ordering=1),
-        'performance': packets.UInt16Field(ordering=2),
-        'delivered': packets.UInt16Field(ordering=3),
+        'value':        packets.Int64Field(ordering=1),
+        'performance':  packets.UInt16Field(ordering=2),
+        'delivered':    packets.UInt16Field(ordering=3),
+        })
+
+class CompanyStats(Packet):
+    pid = 118
+    company_id  = packets.UInt8Field(ordering=1)
+    vehicles    = packets.GroupedField(ordering=2, fields = {
+        'train':    packets.UInt16Field(ordering=1),
+        'lorry':    packets.UInt16Field(ordering=2),
+        'bus':      packets.UInt16Field(ordering=3),
+        'plane':    packets.UInt16Field(ordering=4),
+        'ship':     packets.UInt16Field(ordering=5),
+        })
+    stations    = packets.GroupedField(ordering=3, fields = {
+        'train':    packets.UInt16Field(ordering=1),
+        'lorry':    packets.UInt16Field(ordering=2),
+        'bus':      packets.UInt16Field(ordering=3),
+        'plane':    packets.UInt16Field(ordering=4),
+        'ship':     packets.UInt16Field(ordering=5),
         })
