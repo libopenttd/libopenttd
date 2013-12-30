@@ -218,6 +218,9 @@ class StructField(Field):
 
     _structCache = {}
 
+    def get_struct_type(self):
+        return self.struct_type * self.field_count
+
     @classmethod
     def get_struct(cls, fmt):
         item = StructField._structCache.get(fmt, None)
@@ -233,19 +236,20 @@ class StructField(Field):
         fmt = '<%s' % fmt
         return Struct(fmt)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, count = 1, *args, **kwargs):
         super(StructField, self).__init__(*args, **kwargs)
         self.struct = None
+        self.field_count = count
         self.length = 0
 
     def can_merge(self, other):
         return isinstance(other, StructField)
 
     def _prepare(self):
-        fmt = self.struct_type
+        fmt = self.get_struct_type()
         amt = self.field_count
         for neigh in self.neighbours:
-            fmt += neigh.struct_type
+            fmt += neigh.get_struct_type()
             amt += neigh.field_count
         self.struct = StructField.get_struct(fmt)
         self.length = self.struct.size
@@ -259,10 +263,13 @@ class StructField(Field):
         values = []
         for field in [self,] + self.neighbours:
             value = data.get(field.name)
-            if field.field_count == 1:
-                values.append(field.from_python(value))
+            if field.field_count != 1:
+                if not len(value) == field.field_count:
+                    raise InvalidFieldData("Field '%s' expected %d items but only received %d" % 
+                        (field.name, field.field_count, len(value)))
+                values.extend([field.from_python(val) for val in value])
             else:
-                values.extend(field.from_python(value))
+                values.append(field.from_python(value))
         packed = self.struct.pack(*values)
         return packed
 
@@ -280,7 +287,7 @@ class StructField(Field):
             if field.field_count == 1:
                 read[field.name] = field.to_python(unpack[i])
             else:
-                read[field.name] = field.to_python(unpack[i:i+field.field_count])
+                read[field.name] = [field.to_python(x) for x in unpack[i:i+field.field_count]]
             i += field.field_count
         return read, self.length
 
