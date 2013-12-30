@@ -2,6 +2,7 @@ from .base import FieldBase, PacketOptions
 from .constants import NETWORK_GAMESCRIPT_JSON_LENGTH
 from .exceptions import InvalidReturnCount, InvalidFieldData, InvalidPacketLayout
 from libopenttd.utils import six
+from libopenttd.utils.six.moves import range
 
 from struct import Struct
 from datetime import datetime, timedelta
@@ -141,6 +142,50 @@ class JsonField(StringField):
         if not isinstance(value, six.string_types):
             value = self.from_python(value)
         return len(value) < NETWORK_GAMESCRIPT_JSON_LENGTH
+
+class RepeatingField(Field):
+    _meta       = None
+    field_count = 1
+
+    def __init__(self, fields = None, count = 1, *args, **kwargs):
+        super(RepeatingField, self).__init__(*args, **kwargs)
+        self._meta = PacketOptions(None, None)
+        if isinstance(fields, dict):
+            for name, field in six.iteritems(fields):
+                field.contribute_to_class(self, name)
+        self.field_count = count
+
+    def _prepare(self):
+        self._meta._prepare(self)
+
+    def to_python(self, value):
+        return value
+
+    def read_bytes(self, data, index):
+        start = index
+        values = []
+        for _ in range(self.field_count):
+            value = {}
+            for field in self._meta.parsing_fields:
+                fielddata, increment = field.read_bytes(data, index)
+                index += increment
+                value.update(fielddata)
+            values.append(value)
+        return {self.name: self.to_python(values)}, index - start
+
+    def from_python(self, value):
+        return value
+
+    def write_bytes(self, data):
+        if not len(data.get(self.name)) == self.field_count:
+            raise InvalidFieldData("Field %s expected %d items, not %d" % 
+                (self.name, self.field_count, len(data.get(self.name))))
+        value = ''
+        data = self.from_python(data.get(self.name))
+        for item in data:
+            for field in self._meta.parsing_fields:
+                value += field.write_bytes(item)
+        return value
 
 class LoopingField(Field):
     _meta       = None
