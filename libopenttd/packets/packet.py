@@ -27,6 +27,11 @@ class Packet(six.with_metaclass(PacketBase)):
             value = data.get(field.name, field.default_value)
             setattr(self, field.name, value)
 
+    def as_dict(self):
+        return dict([
+            (field.name, getattr(self, field.name, field.default_value))
+            for field in self._meta.fields
+            ])
 
     def write(self):
         return self.manager.to_data(self)
