@@ -1,9 +1,21 @@
-from .base import FieldBase
+from .base import FieldBase, PacketOptions
 from .constants import NETWORK_GAMESCRIPT_JSON_LENGTH
-from .exceptions import InvalidReturnCount, InvalidFieldData
+from .exceptions import InvalidReturnCount, InvalidFieldData, InvalidPacketLayout
 from libopenttd.utils import six
 
 from struct import Struct
+from datetime import datetime, timedelta
+
+GAMEDATE_BASE_DATE = datetime(1, 1, 1)
+GAMEDATE_BASE_OFFSET = 366
+
+def gamedate_to_datetime(date):
+    if date < GAMEDATE_BASE_OFFSET: # We really only get 0 occasionally, but cover all the cases.
+        return datetime.min
+    return GAMEDATE_BASE_DATE + timedelta(days = date  - GAMEDATE_BASE_OFFSET)
+
+def datetime_to_gamedate(datetime):
+    return (datetime - GAMEDATE_BASE_DATE).days + GAMEDATE_BASE_OFFSET
 
 try:
     import json
@@ -22,9 +34,12 @@ class Field(FieldBase):
     default_value   = None
     validators      = None
     validate        = None
-    def __init__(self, ordering = -1, validators = None, *args, **kwargs):
+    is_next         = False
+
+    def __init__(self, ordering = -1, validators = None, is_next = False, *args, **kwargs):
         super(Field, self).__init__(ordering = ordering, *args, **kwargs)
         self.neighbours = []
+        self.is_next = is_next
         if validators:
             if isinstance(validators, (list, tuple)):
                 self.validators = list(validators)
@@ -113,7 +128,7 @@ class JsonField(StringField):
         return super(JsonField, self).from_python(value)
 
     def to_python(self, value):
-        if isinstance(value, string_types):
+        if isinstance(value, six.string_types):
             value = super(JsonField, self).to_python(value)
             value = json.loads(value)
         elif isinstance(value, (list, dict, tuple, set)):
@@ -126,6 +141,76 @@ class JsonField(StringField):
         if not isinstance(value, six.string_types):
             value = self.from_python(value)
         return len(value) < NETWORK_GAMESCRIPT_JSON_LENGTH
+
+class LoopingField(Field):
+    _meta       = None
+    next_field  = None
+
+    def __init__(self, fields = None, *args, **kwargs):
+        super(LoopingField, self).__init__(*args, **kwargs)
+        self._meta = PacketOptions(None, None)
+        if isinstance(fields, dict):
+            for name, field in six.iteritems(fields):
+                field.contribute_to_class(self, name)
+        self.next_field = None
+
+    def _prepare(self):
+        self._meta._prepare(self)
+        for field in self._meta.fields:
+            if field.is_next:
+                self.next_field = field
+                break
+        if not self.next_field:
+            raise InvalidPacketLayout("No field marked with is_next found")
+        self.next_field._prepare()
+
+    def to_python(self, value):
+        return value
+
+    def read_bytes(self, data, index):
+        start = index
+        value, increment = self.next_field.read_bytes(data, index)
+        index += increment
+        values = []
+        while value.get(self.next_field.name):
+            value = {}
+            for field in self._meta.parsing_fields:
+                fielddata, increment = field.read_bytes(data, index)
+                index += increment
+                value.update(fielddata)
+            values.append(value)
+        return {self.name: self.to_python(values)}, index - start
+
+    def from_python(self, value):
+        return value
+
+    def write_bytes(self, data):
+        if not data:
+            return  self.next_field.write_bytes({self.next_field.name: False})
+        data = self.from_python(data.get(self.name))
+        last_index = len(data) - 1
+        values = self.next_field.write_bytes({self.next_field.name: True})
+        for i, item in enumerate(data):
+            item.update({self.next_field.name: i != last_index})
+            for field in self._meta.parsing_fields:
+                values += field.write_bytes(item)
+        return values
+
+    def set_attributes_from_name(self, name):
+        super(LoopingField, self).set_attributes_from_name(name)
+        self._meta.name = name
+
+class DictField(LoopingField):
+    def __init__(self, key = None, value = None, is_next = None, *args, **kwargs):
+        fields = {'key': key, 'value': value, 'is_next': is_next}
+        kwargs['fields'] = fields
+        super(DictField, self).__init__(*args, **kwargs)
+
+    def to_python(self, value):
+        return dict([(val['key'], val['value']) for val in value])
+
+    def from_python(self, value):
+        return [{'key': key, 'value': value} for key, value in six.iteritems(value)]
 
 class StructField(Field):
     struct_type = None
@@ -203,7 +288,7 @@ class CharField(StructField):
     struct_type = 'c'
 
 class BooleanField(StructField):
-    struct_type = 'c'
+    struct_type = '?'
     def to_python(self, value):
         return bool(value)
 
@@ -247,6 +332,13 @@ class UIntField(StructField):
     validate = _between(0, 0xFFFFFFFF)
 
 ULongField = UInt32Field = UIntField
+
+class DateField(UIntField):
+    def to_python(self, value):
+        return gamedate_to_datetime(value)
+
+    def from_python(self, value):
+        return datetime_to_gamedate(value)
 
 class SIntField(StructField):
     struct_type = 'i'
