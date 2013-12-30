@@ -146,6 +146,7 @@ class JsonField(StringField):
 class RepeatingField(Field):
     _meta       = None
     field_count = 1
+    expected_count = 1
 
     def __init__(self, fields = None, count = 1, *args, **kwargs):
         super(RepeatingField, self).__init__(*args, **kwargs)
@@ -153,7 +154,7 @@ class RepeatingField(Field):
         if isinstance(fields, dict):
             for name, field in six.iteritems(fields):
                 field.contribute_to_class(self, name)
-        self.field_count = count
+        self.field_count = self.expected_count = count
 
     def _prepare(self):
         self._meta._prepare(self)
@@ -177,14 +178,32 @@ class RepeatingField(Field):
         return value
 
     def write_bytes(self, data):
-        if not len(data.get(self.name)) == self.field_count:
+        if not len(data.get(self.name)) == self.expected_count:
             raise InvalidFieldData("Field %s expected %d items, not %d" % 
-                (self.name, self.field_count, len(data.get(self.name))))
+                (self.name, self.expected_count, len(data.get(self.name))))
         value = ''
         data = self.from_python(data.get(self.name))
         for item in data:
             for field in self._meta.parsing_fields:
                 value += field.write_bytes(item)
+        return value
+
+class GroupedField(RepeatingField):
+    def __init__(self, fields = None, *args, **kwargs):
+        super(RepeatingField, self).__init__(*args, **kwargs)
+        self._meta = PacketOptions(None, None)
+        if isinstance(fields, dict):
+            for name, field in six.iteritems(fields):
+                field.contribute_to_class(self, name)
+        self.expected_count = len(fields)
+
+    def to_python(self, value):
+        if isinstance(value, (list, tuple)):
+            return value[0]
+
+    def from_python(self, value):
+        if not isinstance(value, (list, tuple)):
+            return [value,]
         return value
 
 class LoopingField(Field):
