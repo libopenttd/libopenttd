@@ -114,6 +114,10 @@ class PacketOptions(object):
     def add_field(self, field):
         self.fields.append(field)
 
+    def add_fields(self, fields):
+        if isinstance(fields, (list, tuple, set)):
+            self.fields.extend(list(fields))
+
     def get_field_by_name(self, name):
         for field in self.fields:
             if field.name == name:
