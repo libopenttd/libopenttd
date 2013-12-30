@@ -5,7 +5,6 @@ import copy
 
 from .enums import Direction, Protocol
 from .registry import registry
-from libopenttd.utils.six.moves import range 
 
 from operator import attrgetter
 
