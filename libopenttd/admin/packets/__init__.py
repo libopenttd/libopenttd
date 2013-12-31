@@ -1,2 +1,2 @@
-from .send import *
-from .recv import *
+import send
+import recv
