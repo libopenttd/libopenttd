@@ -75,8 +75,8 @@ class PacketSocket(socket.socket):
             packet_data = self.mbuf[self.mbuf_index + packet_size:self.mbuf_index + info.length].tobytes()
             self.mbuf_index += info.length
             packet = self.packet_registry.get(info.packet_id)
-            if packet:
-                return
+            if not packet:
+                continue # Ignore packets we don't understand.
             try:
                 obj = packet.manager.from_data(packet_data)
             except:
