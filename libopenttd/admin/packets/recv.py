@@ -32,7 +32,7 @@ class Welcome(Packet):
     map_name    = packets.StringField(ordering=4)
     seed        = packets.UInt32Field(ordering=5)
     landscape   = packets.UInt8Field(ordering=6)
-    startyear   = packets.UInt32Field(ordering=7)
+    startyear   = packets.DateField(ordering=7)
     size_x      = packets.UInt16Field(ordering=8)
     size_y      = packets.UInt16Field(ordering=9)
 
