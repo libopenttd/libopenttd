@@ -30,8 +30,6 @@ class PacketRegistry(object):
                 continue
             self.all_packets[packet._meta.protocol][direction][packet.pid] = packet
 
-    #Optimize this method for speed
-    @lru_cache.lru_cache(maxsize=None)
     def get_packets(self, protocol, direction, only_both = False):
         packets = {}
         if direction & Direction.BOTH == Direction.BOTH:
