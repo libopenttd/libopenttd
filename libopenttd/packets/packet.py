@@ -36,6 +36,17 @@ class Packet(six.with_metaclass(PacketBase)):
     def write(self):
         return self.manager.to_data(self)
 
+    @classmethod
+    def is_fixed_length(self):
+        return all([field.is_fixed_length() for field in self._meta.fields])
+
+    @classmethod
+    def get_packet_size(self):
+        if not self.is_fixed_length():
+            return 0
+        else:
+            return sum([field.get_field_size() for field in self._meta.fields])
+
     def __repr__(self):
         try:
             utf = six.text_type(self)

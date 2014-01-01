@@ -37,6 +37,12 @@ class Field(FieldBase):
     validate        = None
     is_next         = False
 
+    def is_fixed_length(self):
+        return False
+
+    def get_field_size(self):
+        return 0
+
     def __init__(self, ordering = -1, validators = None, is_next = False, *args, **kwargs):
         super(Field, self).__init__(ordering = ordering, *args, **kwargs)
         self.neighbours = []
@@ -147,6 +153,16 @@ class RepeatingField(Field):
     _meta       = None
     field_count = 1
     expected_count = 1
+
+
+    def is_fixed_length(self):
+        return all([field.is_fixed_length() for field in self._meta.fields])
+
+    def get_field_size(self):
+        if not self.is_fixed_length():
+            return 0
+        else:
+            return sum([field.get_field_size() for field in self._meta.fields])
 
     def __init__(self, fields = None, count = 1, *args, **kwargs):
         super(RepeatingField, self).__init__(*args, **kwargs)
@@ -284,6 +300,12 @@ class StructField(Field):
 
     def get_struct_type(self):
         return self.struct_type * self.field_count
+
+    def is_fixed_length(self):
+        return True
+
+    def get_field_size(self):
+        return self.length * self.field_count
 
     @classmethod
     def get_struct(cls, fmt):
