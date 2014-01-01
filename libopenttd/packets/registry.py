@@ -21,8 +21,6 @@ class PacketRegistry(object):
                 existing = self.all_packets[packet._meta.protocol][direction][packet.pid]
                 if existing == packet:
                     continue
-                print packet
-                print existing
                 warnings.warn("Packet class '%s' collides with class '%s' for the direction '%s' and protocol '%s'. "
                                 "as a result, this packet will not register." % (packet._meta.name,
                                 existing._meta.name, Direction.get_name(direction), 
