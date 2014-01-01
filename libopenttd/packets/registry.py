@@ -28,7 +28,7 @@ class PacketRegistry(object):
                 continue
             self.all_packets[packet._meta.protocol][direction][packet.pid] = packet
 
-    def get_packets(self, protocol, direction, only_both = False):
+    def get_packets_dict(self, protocol, direction, only_both = False):
         packets = {}
         if direction & Direction.BOTH == Direction.BOTH:
             if only_both:
@@ -39,7 +39,10 @@ class PacketRegistry(object):
             directions = [direction]
         for direction in directions:
             packets.update(dict(self.all_packets[protocol][direction].items()))
-        return packets.values()
+        return packets
+
+    def get_packets(self, protocol, direction, only_both = False):
+        return self.get_packets_dict(protocol, direction, only_both).values()
 
     def get_registered_packet(self, packet):
         return self.get_packet(packet._meta.protocol, packet._meta.direction, packet.pid)
