@@ -6,6 +6,8 @@ import fields
 from .enums import Protocol, Direction
 from .registry import registry
 
+from threading import Lock
+
 class OpenTTDPacket(Packet):
     pid = -1
     length              = fields.UInt16Field(ordering=1)
@@ -14,10 +16,64 @@ class OpenTTDPacket(Packet):
         protocol = Protocol.NONE
         direction = Direction.BOTH
 
-class PacketSocket(socket.socket):
+class BufferedSocket(socket.socket):
+    """
+    BufferedSocket implement's python's socket class and wraps it in such a way
+    that it uses socket's read_into function to fill a buffer.
+
+    This allows for faster processing of buffer data, while doing packet processing
+    on a different level.
+    """
+
+    BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE / 2
+
+    def __init__(self, *args, **kwargs):
+        super(BufferedSocket, self).__init__(*args, **kwargs)
+        self.primary_buffer = bytearray()
+        self.secondary_buffer = bytearray(self.BUFFER_SIZE)
+        self.mem_buf  = None
+        self.mem_buf_idx = 0
+        self.mem_buf_size = 0
+        self.buffer_lock = Lock()
+
+    def buffer_fill(self):
+        with self.buffer_lock:
+            read = self.recv_into(self.secondary_buffer)
+            if read == 0:
+                pass # TODO : Handle 0-read.
+            self.primary_buffer.extend(self.secondary_buffer[0:read])
+        return read
+
+    def _start_memory_buffer(self):
+        """
+        Prepares the current buffer for reading.
+        This action also prevents the buffer from being written to,
+        so we create a new write-buffer to write to.
+        """
+        with self.buffer_lock:
+            self.mem_buf = memoryview(self.primary_buffer)
+            self.mem_buf_size = len(self.mem_buf)
+            self.mem_buf_idx = 0
+            self.primary_buffer = bytearray()
+
+    def _end_memory_buffer(self):
+        """
+        Indicates we are done reading the memory buffer.
+        This restores the write buffer with the remaining data from
+        the memory buffer before any other data that might have been
+        written to it.
+        """
+        with self.buffer_lock:
+            new_buffer = bytearray(self.mem_buf[self.mem_buf_idx:])
+            new_buffer.extend(self.primary_buffer)
+            self.primary_buffer = new_buffer
+            self.mem_buf = None
+            self.mem_buf_size = 0
+            self.mem_buf_idx = 0
+
+class PacketSocket(BufferedSocket):
     DEFAULT_FAMILY      = socket.AF_INET
     DEFAULT_TYPE        = socket.SOCK_STREAM
-    DEFAULT_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE / 2
 
     DEFAULT_PROTOCOL    = Protocol.NONE
     DEFAULT_DIRECTION   = Direction.BOTH
@@ -31,12 +87,7 @@ class PacketSocket(socket.socket):
             protocol = self.DEFAULT_PROTOCOL
         if direction is None:
             direction = self.DEFAULT_DIRECTION
-        super(PacketSocket, self).__init__(family, _type, 0)
-
-        self.recv_buffer = None
-        self.read_buffer = bytearray()
-        self.mbuf = None
-        self.mbuf_size = 0
+        super(PacketSocket, self).__init__(family, _type)
 
         self.openttd_protocol = protocol
         self.openttd_direction = direction
@@ -47,42 +98,44 @@ class PacketSocket(socket.socket):
             ip = (ip, port)
         return super(PacketSocket, self).connect(ip)
 
-    def buffered_read(self):
-        self.recv_buffer = bytearray(self.DEFAULT_BUFFER_SIZE)
-        read = self.recv_into(self.recv_buffer)
-        if read:
-            self.read_buffer.extend(self.recv_buffer[0:read])
-        self.mbuf = memoryview(self.read_buffer)
-        self.mbuf_size = len(self.mbuf)
-        self.mbuf_index = 0
-        return read
+    def process_recv(self):
+        return self.buffer_fill()
 
-    def buffered_read_end(self):
-        self.read_buffer = bytearray(self.mbuf[self.mbuf_index:])
+    def process_recv_full(self):
+        self.process_recv()
+        return self.process_packets()
 
-    def recv_packet(self):
-        is_packet_avail = False
-        read = self.buffered_read()
-        if read == 0:
-            pass # TODO: Handle 0 bytes read.
-        packet_size = OpenTTDPacket.get_packet_size()
-        while True:
-            if self.mbuf_size < self.mbuf_index + packet_size:
-                break
-            info = OpenTTDPacket.manager.from_data(self.mbuf[self.mbuf_index:self.mbuf_index+packet_size].tobytes())
-            if self.mbuf_size < info.length + self.mbuf_index:
-                break
-            packet_data = self.mbuf[self.mbuf_index + packet_size:self.mbuf_index + info.length].tobytes()
-            self.mbuf_index += info.length
-            packet = self.packet_registry.get(info.packet_id)
-            if not packet:
-                continue # Ignore packets we don't understand.
-            try:
-                obj = packet.manager.from_data(packet_data)
-            except:
-                pass # TODO: Handle invalid packet data
-            yield obj
-        self.buffered_read_end()
+    def process_packets(self):
+        try:
+            self._start_memory_buffer()
+            header_size = OpenTTDPacket.get_packet_size()
+
+            while True:
+                if self.mem_buf_size < self.mem_buf_idx + header_size:
+                    # Not enough data in buffer to parse a header
+                    break
+                info = OpenTTDPacket.manager.from_data(
+                        self.mem_buf[self.mem_buf_idx:self.mem_buf_idx+header_size].tobytes()
+                        )
+                if self.mem_buf_size < self.mem_buf_idx + info.length:
+                    # Not enough data in buffer to parse the full packet
+                    break
+                packet_data = self.mem_buf[self.mem_buf_idx + header_size:self.mem_buf_idx + info.length]
+                self.mem_buf_idx += info.length
+                packet = self.packet_registry.get(info.packet_id)
+                if not packet:
+                    # We don't understand this packet.. maybe we should log this.
+                    # TODO: Add Logging
+                    continue
+                try:
+                    obj = packet.manager.from_data(packet_data.tobytes())
+                except: # pylint: disable=W0702
+                    # Something went wrong while parsing this packet.. maybe we should log this.
+                    # TODO: Add Logging
+                    continue
+                yield obj
+        finally:
+            self._end_memory_buffer()
 
     def send_packet(self, packet, *args, **kwargs):
         if isinstance(packet, type):
