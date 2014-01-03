@@ -51,7 +51,8 @@ class PacketManager(object):
         return obj
 
     def to_data(self, packet, extra = None):
-
+        if extra is None:
+            extra = {}
         data = dict([(field.name, getattr(packet, field.name, None)) for field in self.opts.fields])
 
         segments = []
