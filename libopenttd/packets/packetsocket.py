@@ -1,6 +1,7 @@
 import io
 import socket
 
+from .constants import SEND_MTU
 from .packet import Packet
 import fields
 from .enums import Protocol, Direction
@@ -25,23 +26,63 @@ class BufferedSocket(socket.socket):
     on a different level.
     """
 
-    BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE / 2
+    READ_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE / 2
 
     def __init__(self, *args, **kwargs):
         super(BufferedSocket, self).__init__(*args, **kwargs)
-        self.primary_buffer = bytearray()
-        self.secondary_buffer = bytearray(self.BUFFER_SIZE)
+        self.prim_read_buf = bytearray()
+        self.sec_read_buf = bytearray(self.READ_BUFFER_SIZE)
+
+        self.prim_write_buf = bytearray()
+
         self.mem_buf  = None
         self.mem_buf_idx = 0
         self.mem_buf_size = 0
-        self.buffer_lock = Lock()
 
-    def buffer_fill(self):
-        with self.buffer_lock:
-            read = self.recv_into(self.secondary_buffer)
+        self._connected = False
+
+        self.read_buf_lock = Lock()
+        self.write_buf_lock = Lock()
+
+    @property
+    def connected(self):
+        return self._connected
+
+    def connect(self, *args, **kwargs):
+        ret = None
+        try:
+            self.mem_buf = None
+            self.prim_read_buf = bytearray()
+            self.sec_read_buf = bytearray(self.READ_BUFFER_SIZE)
+            self.prim_write_buf = bytearray()
+            ret = super(BufferedSocket, self).connect(*args, **kwargs)
+        except:
+            raise
+        else:
+            self._connected = True
+        return ret
+
+    def queue_write(self, data):
+        with self.write_buf_lock:
+            self.prim_write_buf.extend(data)
+
+    def write_buffer_flush(self):
+        with self.write_buf_lock:
+            send_len = min(len(self.prim_write_buf), SEND_MTU)
+            data = memoryview(self.prim_write_buf[0:send_len]).tobytes()
+            sent = self.send(data)
+            if sent == 0:
+                self._connected = False
+                # TODO : Handle 0-sent
+            del self.prim_write_buf[0:sent]
+
+    def read_buffer_fill(self):
+        with self.read_buf_lock:
+            read = self.recv_into(self.sec_read_buf)
             if read == 0:
-                pass # TODO : Handle 0-read.
-            self.primary_buffer.extend(self.secondary_buffer[0:read])
+                self._connected = False
+                # TODO : Handle 0-read.
+            self.prim_read_buf.extend(self.sec_read_buf[0:read])
         return read
 
     def _start_memory_buffer(self):
@@ -50,11 +91,11 @@ class BufferedSocket(socket.socket):
         This action also prevents the buffer from being written to,
         so we create a new write-buffer to write to.
         """
-        with self.buffer_lock:
-            self.mem_buf = memoryview(self.primary_buffer)
+        with self.read_buf_lock:
+            self.mem_buf = memoryview(self.prim_read_buf)
             self.mem_buf_size = len(self.mem_buf)
             self.mem_buf_idx = 0
-            self.primary_buffer = bytearray()
+            self.prim_read_buf = bytearray()
 
     def _end_memory_buffer(self):
         """
@@ -63,10 +104,10 @@ class BufferedSocket(socket.socket):
         the memory buffer before any other data that might have been
         written to it.
         """
-        with self.buffer_lock:
+        with self.read_buf_lock:
             new_buffer = bytearray(self.mem_buf[self.mem_buf_idx:])
-            new_buffer.extend(self.primary_buffer)
-            self.primary_buffer = new_buffer
+            new_buffer.extend(self.prim_read_buf)
+            self.prim_read_buf = new_buffer
             self.mem_buf = None
             self.mem_buf_size = 0
             self.mem_buf_idx = 0
@@ -93,17 +134,20 @@ class PacketSocket(BufferedSocket):
         self.openttd_direction = direction
         self.packet_registry = registry.get_packets_dict(protocol, direction)
 
-    def connect(self, ip, port = None):
+    def connect(self, ip, port = None): # pylint: disable=W0221
         if not (isinstance(ip, tuple) and len(ip) == 2):
             ip = (ip, port)
         return super(PacketSocket, self).connect(ip)
 
     def process_recv(self):
-        return self.buffer_fill()
+        return self.read_buffer_fill()
 
     def process_recv_full(self):
         self.process_recv()
         return self.process_packets()
+
+    def process_send(self):
+        return self.write_buffer_flush()
 
     def process_packets(self):
         try:
@@ -144,4 +188,4 @@ class PacketSocket(BufferedSocket):
         data = packet.write()
         info = OpenTTDPacket(length = len(data) + OpenTTDPacket.get_packet_size(), packet_id = packet.pid)
         data = '%s%s' % (info.write(), data)
-        self.sendall(data)
+        self.queue_write(data)
