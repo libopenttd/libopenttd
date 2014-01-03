@@ -36,6 +36,8 @@ class Field(FieldBase):
     validators      = None
     validate        = None
     is_next         = False
+    required_version = None
+    is_version_identifier = None
 
     def is_fixed_length(self):
         return False
@@ -43,10 +45,16 @@ class Field(FieldBase):
     def get_field_size(self):
         return 0
 
-    def __init__(self, ordering = -1, validators = None, is_next = False, *args, **kwargs):
+    def __init__(self, ordering = -1, validators = None, is_next = False, 
+            is_version_identifier = False, required_version = None, *args, **kwargs):
         super(Field, self).__init__(ordering = ordering, *args, **kwargs)
         self.neighbours = []
         self.is_next = is_next
+        self.is_version_identifier = is_version_identifier
+        if not is_version_identifier:
+            self.required_version = required_version
+        else:
+            self.required_version = -2 # We force a different required version to ensure version matching works.
         if validators:
             if isinstance(validators, (list, tuple)):
                 self.validators = list(validators)
@@ -59,6 +67,9 @@ class Field(FieldBase):
 
     def can_merge(self, other):
         return False
+
+    def same_version(self, other):
+        return self.required_version == other.required_version
 
     def merge(self, other):
         self.neighbours.append(other)
@@ -101,7 +112,7 @@ class StringField(Field):
         self.trim_length = trim_length
 
     def can_merge(self, other):
-        return isinstance(other, StringField)
+        return isinstance(other, StringField) and self.same_version(other)
 
     def from_python(self, value):
         if self.trim_length:
@@ -206,7 +217,7 @@ class RepeatingField(Field):
 
 class GroupedField(RepeatingField):
     def __init__(self, fields = None, *args, **kwargs):
-        super(RepeatingField, self).__init__(*args, **kwargs)
+        super(GroupedField, self).__init__(*args, **kwargs)
         self._meta = PacketOptions(None, None)
         if isinstance(fields, dict):
             for name, field in six.iteritems(fields):
@@ -329,7 +340,7 @@ class StructField(Field):
         self.length = 0
 
     def can_merge(self, other):
-        return isinstance(other, StructField)
+        return isinstance(other, StructField) and self.same_version(other)
 
     def _prepare(self):
         fmt = self.get_struct_type()

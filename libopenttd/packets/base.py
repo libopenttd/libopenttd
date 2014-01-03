@@ -9,10 +9,10 @@ from .registry import registry
 from operator import attrgetter
 
 OPTIONS_DEFAULT_NAMES = (
-    'abstract', 'direction', 'protocol', 'override', 'virtual', 'force_virtual',
+    'abstract', 'direction', 'protocol', 'override', 'virtual', 'force_virtual', 'default_version',
     )
 OPTIONS_INHERITED = (
-    'protocol', 'direction', 'force_virtual',
+    'protocol', 'direction', 'force_virtual', 'default_version',
     )
 
 class PacketManager(object):
@@ -25,11 +25,23 @@ class PacketManager(object):
         self.opts = cls._meta
         setattr(cls, name, self)
 
-    def from_data(self, data, index = 0):
+    def from_data(self, data, index = 0, extra = None):
         all_fields = {}
+        if extra is None:
+            extra = {}
+
+        version_field = None
+        for field in self.opts.fields:
+            if field.is_version_identifier:
+                version_field = field.name
 
         for field in self.opts.parsing_fields:
-            fielddata, length = field.read_bytes(data, index)
+            if field.required_version:
+                if extra.get('version', self.opts.default_version) < field.required_version:
+                    continue
+            fielddata, length = field.read_bytes(data, index, extra)
+            if version_field and version_field in fielddata:
+                extra['version'] = fielddata.get(version_field)
             index += length
             all_fields.update(fielddata)
 
@@ -38,12 +50,15 @@ class PacketManager(object):
             setattr(obj, field.name, all_fields.get(field.name))
         return obj
 
-    def to_data(self, packet):
+    def to_data(self, packet, extra = None):
 
         data = dict([(field.name, getattr(packet, field.name, None)) for field in self.opts.fields])
 
         segments = []
         for field in self.opts.parsing_fields:
+            if field.required_version:
+                if extra.get('version', self.opts.default_version) < field.required_version:
+                    continue
             segments.append(field.write_bytes(data))
 
         return ''.join(segments)
@@ -59,6 +74,7 @@ class PacketOptions(object):
         self.fields = []
         self.fields_sorted = []
         self.parsing_fields = []
+        self.default_version = -1
 
     def contribute_to_class(self, cls, name):
         base_meta = getattr(cls, '_meta', None)

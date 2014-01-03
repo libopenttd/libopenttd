@@ -33,8 +33,8 @@ class Packet(six.with_metaclass(PacketBase)):
             for field in self._meta.fields
             ])
 
-    def write(self):
-        return self.manager.to_data(self)
+    def write(self, *args, **kwargs):
+        return self.manager.to_data(self, *args, **kwargs)
 
     @classmethod
     def is_fixed_length(self):
