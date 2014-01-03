@@ -39,7 +39,7 @@ class PacketManager(object):
             if field.required_version:
                 if extra.get('version', self.opts.default_version) < field.required_version:
                     continue
-            fielddata, length = field.read_bytes(data, index, extra)
+            fielddata, length = field.read_bytes(data, index)
             if version_field and version_field in fielddata:
                 extra['version'] = fielddata.get(version_field)
             index += length
