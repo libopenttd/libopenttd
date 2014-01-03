@@ -306,6 +306,7 @@ class DictField(LoopingField):
 class StructField(Field):
     struct_type = None
     field_count = 1
+    default_value = 0
 
     _structCache = {}
 
@@ -393,6 +394,8 @@ class CharField(StructField):
 
 class BooleanField(StructField):
     struct_type = '?'
+    default_value = False
+    
     def to_python(self, value):
         return bool(value)
 
