@@ -134,6 +134,8 @@ class PacketSocket(BufferedSocket):
         self.openttd_direction = direction
         self.packet_registry = registry.get_packets_dict(protocol, direction)
 
+        self.extra_info = {}
+
     def connect(self, ip, port = None): # pylint: disable=W0221
         if not (isinstance(ip, tuple) and len(ip) == 2):
             ip = (ip, port)
@@ -172,7 +174,7 @@ class PacketSocket(BufferedSocket):
                     # TODO: Add Logging
                     continue
                 try:
-                    obj = packet.manager.from_data(packet_data.tobytes())
+                    obj = packet.manager.from_data(packet_data.tobytes(), extra=self.extra_info)
                 except: # pylint: disable=W0702
                     # Something went wrong while parsing this packet.. maybe we should log this.
                     # TODO: Add Logging
@@ -185,7 +187,7 @@ class PacketSocket(BufferedSocket):
         if isinstance(packet, type):
             packet = packet(*args, **kwargs)
 
-        data = packet.write()
+        data = packet.write(extra=self.extra_info)
         info = OpenTTDPacket(length = len(data) + OpenTTDPacket.get_packet_size(), packet_id = packet.pid)
         data = '%s%s' % (info.write(), data)
         self.queue_write(data)
