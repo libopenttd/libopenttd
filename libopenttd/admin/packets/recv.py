@@ -19,7 +19,7 @@ class Error(Packet):
 
 class Protocol(Packet):
     pid = 103
-    version     = packets.UInt8Field(ordering=1)
+    version     = packets.UInt8Field(ordering=1, is_version_identifier = True)
     settings    = packets.DictField(ordering=2, key=packets.UInt16Field(ordering=1),
                                     value=packets.UInt16Field(ordering=2),
                                     is_next=packets.BooleanField(ordering=3, is_next=True))
