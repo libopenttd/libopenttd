@@ -3,11 +3,10 @@ import socket
 
 from .constants import SEND_MTU
 from .packet import Packet
+from .base import ProtocolInformation
 import fields
 from .enums import Protocol, Direction
 from .registry import registry
-
-from libopenttd.utils import six
 
 from threading import Lock
 
@@ -121,6 +120,7 @@ class PacketSocket(BufferedSocket):
     DEFAULT_PROTOCOL    = Protocol.NONE
     DEFAULT_DIRECTION   = Direction.BOTH
     DEFAULT_PORT        = -1
+    DEFAULT_VERSION     = 0
 
     def __init__(self, family = None, _type = None, protocol = None, direction = None):
         if family is None:
@@ -137,7 +137,7 @@ class PacketSocket(BufferedSocket):
         self.openttd_direction = direction
         self.packet_registry = registry.get_packets_dict(protocol, direction)
 
-        self.extra_info = {}
+        self.extra_info = ProtocolInformation(self.DEFAULT_VERSION)
 
     def connect(self, ip, port = None): # pylint: disable=W0221
         if not (isinstance(ip, tuple) and len(ip) == 2):

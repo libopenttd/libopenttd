@@ -1,4 +1,4 @@
-from .base import PacketBase, FieldBase
+from .base import PacketBase, FieldBase, ProtocolInformation
 from .enums import Direction, Protocol
 from .exceptions import InvalidReturnCount, InvalidFieldName, InvalidFieldData, InvalidPacketLayout
 from .fields import Field, StringField, StructField, CharField, BooleanField, UByteField, ByteField, UInt8Field, \

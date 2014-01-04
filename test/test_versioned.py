@@ -42,7 +42,7 @@ class TestVersions(unittest.TestCase):
         for i in range(1, 5):
             packet = TestPacket(**self.test_data)
             packet.version = i
-            self.assertTrue(packet.write(extra={'version': i}) == self.packet_data[i])
+            self.assertTrue(packet.write(extra=packets.ProtocolInformation(i)) == self.packet_data[i])
 
     def test_versioned_reading(self):
         packetdata = dict([(i, TestPacket.manager.from_data(self.packet_data[i])) for i in range(1, 5)])

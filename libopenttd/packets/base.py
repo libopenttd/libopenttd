@@ -15,6 +15,12 @@ OPTIONS_INHERITED = (
     'protocol', 'direction', 'force_virtual', 'default_version',
     )
 
+class ProtocolInformation(object):
+    version = None
+    
+    def __init__(self, version = 0):
+        self.version = version
+
 class PacketManager(object):
     def __init__(self):
         self.packet = None
@@ -28,13 +34,9 @@ class PacketManager(object):
     def from_data(self, data, index = 0, extra = None):
         obj_data = {}
         if extra is None:
-            extra = {}
-        extra.setdefault('version', self.opts.default_version)
+            extra = ProtocolInformation()
 
         for field in self.opts.parsing_fields:
-            if field.required_version:
-                if extra.get('version', self.opts.default_version) < field.required_version:
-                    continue
             length = field.read_bytes(data, index, obj_data, extra)
             index += length
 
@@ -45,9 +47,8 @@ class PacketManager(object):
 
     def to_data(self, packet, extra = None):
         if extra is None:
-            extra = {}
-        extra.setdefault('version', self.opts.default_version)
-        
+            extra = ProtocolInformation()
+
         data = dict([(field.name, getattr(packet, field.name, None)) for field in self.opts.fields])
 
         datastream = bytearray()

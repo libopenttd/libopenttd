@@ -127,7 +127,7 @@ class StringField(Field):
             return value
 
     def write_bytes(self, data, datastream, extra):
-        for field in self.get_fieldlist(extra.get('version')):
+        for field in self.get_fieldlist(extra.version):
             value = data.get(field.name)
             datastream.extend(field.from_python(value))
 
@@ -136,7 +136,7 @@ class StringField(Field):
 
     def read_bytes(self, data, index, obj_data, extra):
         start = index
-        for field in self.get_fieldlist(extra.get('version')):
+        for field in self.get_fieldlist(extra.version):
             end = data.find('\x00', index)
             obj_data[field.name] = field.to_python(data[index:end])
             index = end+1
@@ -363,7 +363,7 @@ class StructField(Field):
 
     def write_bytes(self, data, datastream, extra):
         values = []
-        for field in self.get_fieldlist(extra.get('version')):
+        for field in self.get_fieldlist(extra.version):
             value = data.get(field.name)
             if field.field_count != 1:
                 if not len(value) == field.field_count:
@@ -383,15 +383,17 @@ class StructField(Field):
         if len(unpack) != self.total_fields:
             raise InvalidReturnCount("%d items were returned, but %d were expected" % (len(unpack), self.total_fields))
         i = 0
-        for field in self.get_fieldlist(extra.get('version')):
+        for field in self.get_fieldlist(extra.version):
             if field.field_count == 1:
                 obj_data[field.name] = field.to_python(unpack[i])
             else:
                 obj_data[field.name] = [field.to_python(x) for x in unpack[i:i+field.field_count]]
             if field.is_version_identifier:
-                extra['version'] = obj_data[field.name]
+                extra.version = obj_data[field.name]
             i += field.field_count
-        return self.length
+        if i:
+            return self.length
+        return 0
 
 class CharField(StructField):
     struct_type = 'c'
