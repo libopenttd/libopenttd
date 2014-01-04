@@ -26,43 +26,35 @@ class PacketManager(object):
         setattr(cls, name, self)
 
     def from_data(self, data, index = 0, extra = None):
-        all_fields = {}
+        obj_data = {}
         if extra is None:
             extra = {}
-
-        version_field = None
-        for field in self.opts.fields:
-            if field.is_version_identifier:
-                version_field = field.name
+        extra.setdefault('version', self.opts.default_version)
 
         for field in self.opts.parsing_fields:
             if field.required_version:
                 if extra.get('version', self.opts.default_version) < field.required_version:
                     continue
-            fielddata, length = field.read_bytes(data, index)
-            if version_field and version_field in fielddata:
-                extra['version'] = fielddata.get(version_field)
+            length = field.read_bytes(data, index, obj_data, extra)
             index += length
-            all_fields.update(fielddata)
 
         obj = self.packet()
         for field in self.opts.fields:
-            setattr(obj, field.name, all_fields.get(field.name))
+            setattr(obj, field.name, obj_data.get(field.name))
         return obj
 
     def to_data(self, packet, extra = None):
         if extra is None:
             extra = {}
+        extra.setdefault('version', self.opts.default_version)
+        
         data = dict([(field.name, getattr(packet, field.name, None)) for field in self.opts.fields])
 
-        segments = []
+        datastream = bytearray()
         for field in self.opts.parsing_fields:
-            if field.required_version:
-                if extra.get('version', self.opts.default_version) < field.required_version:
-                    continue
-            segments.append(field.write_bytes(data))
+            field.write_bytes(data, datastream, extra)
 
-        return ''.join(segments)
+        return datastream
 
 class PacketOptions(object):
     def __init__(self, meta, name):

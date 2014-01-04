@@ -37,8 +37,7 @@ class Field(FieldBase):
     validate        = None
     is_next         = False
     required_version = None
-    is_version_identifier = None
-
+    
     def is_fixed_length(self):
         return False
 
@@ -46,15 +45,11 @@ class Field(FieldBase):
         return 0
 
     def __init__(self, ordering = -1, validators = None, is_next = False, 
-            is_version_identifier = False, required_version = None, *args, **kwargs):
+                required_version = None, *args, **kwargs):
         super(Field, self).__init__(ordering = ordering, *args, **kwargs)
         self.neighbours = []
         self.is_next = is_next
-        self.is_version_identifier = is_version_identifier
-        if not is_version_identifier:
-            self.required_version = required_version
-        else:
-            self.required_version = -2 # We force a different required version to ensure version matching works.
+        self.required_version = required_version
         if validators:
             if isinstance(validators, (list, tuple)):
                 self.validators = list(validators)
@@ -71,6 +66,16 @@ class Field(FieldBase):
     def same_version(self, other):
         return self.required_version == other.required_version
 
+    def test_version(self, version):
+        if not self.required_version:
+            return True
+        return self.required_version <= version
+
+    def get_fieldlist(self, version):
+        for field in [self,] + self.neighbours:
+            if field.test_version(version):
+                yield field
+
     def merge(self, other):
         self.neighbours.append(other)
 
@@ -82,13 +87,13 @@ class Field(FieldBase):
             raise InvalidFieldData("The value '%r' for field '%s' is invalid" % (value, self.name))
         return True
 
-    def write_bytes(self, data):
+    def write_bytes(self, data, datastream, extra):
         raise NotImplementedError()
 
     def to_python(self, value):
         raise NotImplementedError()
 
-    def read_bytes(self, data, index):
+    def read_bytes(self, data, index, obj_data, extra):
         raise NotImplementedError()
 
     def _prepare(self):
@@ -121,24 +126,21 @@ class StringField(Field):
         if self.is_valid(value):
             return value
 
-    def write_bytes(self, data):
-        values = ''
-        for field in [self,] + self.neighbours:
+    def write_bytes(self, data, datastream, extra):
+        for field in self.get_fieldlist(extra.get('version')):
             value = data.get(field.name)
-            values += field.from_python(value)
-        return values
+            datastream.extend(field.from_python(value))
 
     def to_python(self, value):
         return six.text_type(value.rstrip('\x00'))
 
-    def read_bytes(self, data, index):
+    def read_bytes(self, data, index, obj_data, extra):
         start = index
-        values = {}
-        for field in [self,] + self.neighbours:
+        for field in self.get_fieldlist(extra.get('version')):
             end = data.find('\x00', index)
-            values[field.name] = field.to_python(data[index:end])
+            obj_data[field.name] = field.to_python(data[index:end])
             index = end+1
-        return values, index - start
+        return index - start
 
 class JsonField(StringField):
     def from_python(self, value):
@@ -189,31 +191,29 @@ class RepeatingField(Field):
     def to_python(self, value):
         return value
 
-    def read_bytes(self, data, index):
+    def read_bytes(self, data, index, obj_data, extra):
         start = index
         values = []
         for _ in range(self.field_count):
             value = {}
             for field in self._meta.parsing_fields:
-                fielddata, increment = field.read_bytes(data, index)
+                increment = field.read_bytes(data, index, value, extra)
                 index += increment
-                value.update(fielddata)
             values.append(value)
-        return {self.name: self.to_python(values)}, index - start
+        obj_data[self.name] = self.to_python(values)
+        return index - start
 
     def from_python(self, value):
         return value
 
-    def write_bytes(self, data):
+    def write_bytes(self, data, datastream, extra):
         if not len(data.get(self.name)) == self.expected_count:
             raise InvalidFieldData("Field %s expected %d items, not %d" % 
                 (self.name, self.expected_count, len(data.get(self.name))))
-        value = ''
         data = self.from_python(data.get(self.name))
         for item in data:
             for field in self._meta.parsing_fields:
-                value += field.write_bytes(item)
-        return value
+                field.write_bytes(item, datastream, extra)
 
 class GroupedField(RepeatingField):
     def __init__(self, fields = None, *args, **kwargs):
@@ -258,34 +258,34 @@ class LoopingField(Field):
     def to_python(self, value):
         return value
 
-    def read_bytes(self, data, index):
+    def read_bytes(self, data, index, obj_data, extra):
         start = index
-        value, increment = self.next_field.read_bytes(data, index)
+        value = {}
+        increment = self.next_field.read_bytes(data, index, value, extra)
         index += increment
         values = []
         while value.get(self.next_field.name):
             value = {}
             for field in self._meta.parsing_fields:
-                fielddata, increment = field.read_bytes(data, index)
+                increment = field.read_bytes(data, index, value, extra)
                 index += increment
-                value.update(fielddata)
             values.append(value)
-        return {self.name: self.to_python(values)}, index - start
+        obj_data[self.name] = self.to_python(values)
+        return index - start
 
     def from_python(self, value):
         return value
 
-    def write_bytes(self, data):
+    def write_bytes(self, data, datastream, extra):
         if not data:
             return  self.next_field.write_bytes({self.next_field.name: False})
         data = self.from_python(data.get(self.name))
         last_index = len(data) - 1
-        values = self.next_field.write_bytes({self.next_field.name: True})
+        self.next_field.write_bytes({self.next_field.name: True}, datastream, extra)
         for i, item in enumerate(data):
             item.update({self.next_field.name: i != last_index})
             for field in self._meta.parsing_fields:
-                values += field.write_bytes(item)
-        return values
+                field.write_bytes(item, datastream, extra)
 
     def set_attributes_from_name(self, name):
         super(LoopingField, self).set_attributes_from_name(name)
@@ -334,11 +334,15 @@ class StructField(Field):
         fmt = '<%s' % fmt
         return Struct(fmt)
 
-    def __init__(self, count = 1, *args, **kwargs):
+    def __init__(self, count = 1, is_version_identifier = False, *args, **kwargs):
         super(StructField, self).__init__(*args, **kwargs)
         self.struct = None
         self.field_count = count
         self.length = 0
+        self.is_version_identifier = is_version_identifier
+        if is_version_identifier:
+            self.required_version = -2
+            self.field_count = 1
 
     def can_merge(self, other):
         return isinstance(other, StructField) and self.same_version(other)
@@ -357,9 +361,9 @@ class StructField(Field):
         if self.is_valid(value):
             return value
 
-    def write_bytes(self, data):
+    def write_bytes(self, data, datastream, extra):
         values = []
-        for field in [self,] + self.neighbours:
+        for field in self.get_fieldlist(extra.get('version')):
             value = data.get(field.name)
             if field.field_count != 1:
                 if not len(value) == field.field_count:
@@ -368,26 +372,26 @@ class StructField(Field):
                 values.extend([field.from_python(val) for val in value])
             else:
                 values.append(field.from_python(value))
-        packed = self.struct.pack(*values)
-        return packed
+        if len(values):
+            datastream.extend(self.struct.pack(*values))
 
     def to_python(self, value):
         return value
 
-    def read_bytes(self, data, index):
+    def read_bytes(self, data, index, obj_data, extra):
         unpack = self.struct.unpack_from(data, index)
         if len(unpack) != self.total_fields:
             raise InvalidReturnCount("%d items were returned, but %d were expected" % (len(unpack), self.total_fields))
-        read = {}
-
         i = 0
-        for field in [self,] + self.neighbours:
+        for field in self.get_fieldlist(extra.get('version')):
             if field.field_count == 1:
-                read[field.name] = field.to_python(unpack[i])
+                obj_data[field.name] = field.to_python(unpack[i])
             else:
-                read[field.name] = [field.to_python(x) for x in unpack[i:i+field.field_count]]
+                obj_data[field.name] = [field.to_python(x) for x in unpack[i:i+field.field_count]]
+            if field.is_version_identifier:
+                extra['version'] = obj_data[field.name]
             i += field.field_count
-        return read, self.length
+        return self.length
 
 class CharField(StructField):
     struct_type = 'c'
@@ -395,7 +399,7 @@ class CharField(StructField):
 class BooleanField(StructField):
     struct_type = '?'
     default_value = False
-    
+
     def to_python(self, value):
         return bool(value)
 
