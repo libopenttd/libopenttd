@@ -7,6 +7,8 @@ import fields
 from .enums import Protocol, Direction
 from .registry import registry
 
+from libopenttd.utils import six
+
 from threading import Lock
 
 class OpenTTDPacket(Packet):
@@ -118,6 +120,7 @@ class PacketSocket(BufferedSocket):
 
     DEFAULT_PROTOCOL    = Protocol.NONE
     DEFAULT_DIRECTION   = Direction.BOTH
+    DEFAULT_PORT        = -1
 
     def __init__(self, family = None, _type = None, protocol = None, direction = None):
         if family is None:
@@ -138,7 +141,10 @@ class PacketSocket(BufferedSocket):
 
     def connect(self, ip, port = None): # pylint: disable=W0221
         if not (isinstance(ip, tuple) and len(ip) == 2):
+            if port is None:
+                port = self.DEFAULT_PORT
             ip = (ip, port)
+        print repr(ip)
         return super(PacketSocket, self).connect(ip)
 
     def process_recv(self):
