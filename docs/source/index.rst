@@ -17,6 +17,7 @@ the protocol in whatever language they want.
 .. toctree::
    :maxdepth: 2
 
+   design
    license
 
 
