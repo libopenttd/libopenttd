@@ -21,6 +21,7 @@ the protocol in whatever language they want.
 .. toctree::
    :maxdepth: 2
 
+   license
 
 
 Indices and tables
