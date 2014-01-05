@@ -18,6 +18,8 @@ the protocol in whatever language they want.
    :maxdepth: 2
 
    design
+   packet_structure
+   fields
    license
 
 
