@@ -6,9 +6,13 @@
 
 The following fields are available for use by default:
 
+.. index:: Field
+
 Field
 -----
 The Field class is the main class from which all fields (must) inherit.
+
+.. index:: Field;Members
 
 Field members
 ^^^^^^^^^^^^^

@@ -1,9 +1,13 @@
+.. index:: Packet
+
 ==================
  Packet Structure 
 ==================
 
 While the main structure of a packet should be self-explanatory, there are
 some things to keep in mind while building your own packets.
+
+.. index:: Packet;ID
 
 Packet ID
 ---------
@@ -27,6 +31,8 @@ checked prior to sending a packet over the network.
     decides that the protocol should allow Packet IDs larger than 255, very
     little will have to be changed to allow so on our end.
 
+.. index:: Packet;Fields
+
 Fields
 ------
 
@@ -44,6 +50,8 @@ your own packets/fields.
 .. note::
     Please note that fields are optional. There are some packets who only
     serve to send a 'notification' of sorts, and as such, have no fields.
+
+.. index:: Packet;Meta
 
 Metadata
 --------
