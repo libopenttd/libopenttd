@@ -10,6 +10,8 @@ from .registry import registry
 
 from threading import Lock
 
+from libopenttd.utils.six.moves import queue
+
 class OpenTTDPacket(Packet):
     pid = -1
     length              = fields.UInt16Field(ordering=1)
@@ -28,13 +30,14 @@ class BufferedSocket(socket.socket):
     """
 
     READ_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE / 2
+    WRITE_BUFFER_QUEUE_SIZE = 64
 
     def __init__(self, *args, **kwargs):
         super(BufferedSocket, self).__init__(*args, **kwargs)
         self.prim_read_buf = bytearray()
         self.sec_read_buf = bytearray(self.READ_BUFFER_SIZE)
 
-        self.prim_write_buf = bytearray()
+        self.prim_write_buf = queue.Queue(self.WRITE_BUFFER_QUEUE_SIZE)
 
         self.mem_buf  = None
         self.mem_buf_idx = 0
@@ -43,7 +46,6 @@ class BufferedSocket(socket.socket):
         self._connected = False
 
         self.read_buf_lock = Lock()
-        self.write_buf_lock = Lock()
 
     @property
     def connected(self):
@@ -55,7 +57,7 @@ class BufferedSocket(socket.socket):
             self.mem_buf = None
             self.prim_read_buf = bytearray()
             self.sec_read_buf = bytearray(self.READ_BUFFER_SIZE)
-            self.prim_write_buf = bytearray()
+            self.prim_write_buf = queue.Queue(self.WRITE_BUFFER_QUEUE_SIZE)
             ret = super(BufferedSocket, self).connect(*args, **kwargs)
         except:
             raise
@@ -64,18 +66,21 @@ class BufferedSocket(socket.socket):
         return ret
 
     def queue_write(self, data):
-        with self.write_buf_lock:
-            self.prim_write_buf.extend(data)
+        self.prim_write_buf.put(data, True)
 
     def write_buffer_flush(self):
-        with self.write_buf_lock:
-            send_len = min(len(self.prim_write_buf), SEND_MTU)
-            data = memoryview(self.prim_write_buf[0:send_len]).tobytes()
-            sent = self.send(data)
-            if sent == 0:
+        if not self.prim_write_buf.empty():
+            try:
+                data = self.prim_write_buf.get(False)
+            except queue.Empty:
+                return
+            try:
+                self.sendall(data)
+            except:
                 self._connected = False
-                # TODO : Handle 0-sent
-            del self.prim_write_buf[0:sent]
+                # TODO : Handle errors.
+            finally:
+                self.prim_write_buf.task_done()
 
     def read_buffer_fill(self):
         with self.read_buf_lock:
