@@ -7,7 +7,7 @@ from .fields import Field, StringField, StructField, CharField, BooleanField, UB
     JsonField, LoopingField, DictField, DateField, RepeatingField, GroupedField
 from .packet import Packet
 from .registry import registry
-from .packetsocket import PacketSocket
+from .packetsocket import PacketSocket, PacketUDPSocket
 
 import constants
 import enums
