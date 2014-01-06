@@ -10,7 +10,9 @@ from .enums import Protocol, Direction
 from .registry import registry
 
 from threading import Lock
+from collections import defaultdict
 
+from libopenttd.utils import six
 from libopenttd.utils.six.moves import queue
 
 class OpenTTDPacket(Packet):
@@ -91,6 +93,8 @@ class SocketBuffer(object):
 
     @property
     def active(self):
+        if self._inactivity_time == 0:
+            return True
         return time.time() - self.last_activity <= self._inactivity_time 
 
     def __exit__(self, type, value, traceback):
@@ -140,10 +144,10 @@ class BufferedSocket(socket.socket):
         self.buffer.queue_write(data)
 
     def write_buffer_flush(self):
-        if self.buffer.write_avail:
+        while self.buffer.write_avail:
             data = self.buffer.dequeue_write()
             if not data:
-                return
+                break
             try:
                 self.sendall(data)
             except: # pylint: disable=W0702
@@ -158,6 +162,7 @@ class BufferedSocket(socket.socket):
             read = self.recv_into(self.read_buf)
             if read == 0:
                 self._connected = False
+                return 0
                 # TODO : Handle 0-read.
             self.buffer.extend(self.read_buf[0:read])
         return read
@@ -230,7 +235,6 @@ class PacketSocket(BufferedSocket):
                 except: # pylint: disable=W0702
                     continue
                 packets.append(obj)
-                print self.buffer.read_avail
         return packets
 
     def send_packet(self, packet, *args, **kwargs):
@@ -241,3 +245,116 @@ class PacketSocket(BufferedSocket):
         info = OpenTTDPacket(length = len(data) + OpenTTDPacket.get_packet_size(), packet_id = packet.pid)
         data = '%s%s' % (info.write(), data)
         self.queue_write(data)
+
+class BufferedUDPSocket(BufferedSocket):
+    def __init__(self, *args, **kwargs):
+        super(BufferedUDPSocket, self).__init__(*args, **kwargs)
+        self.buffer = defaultdict(lambda: SocketBuffer(self.WRITE_BUFFER_QUEUE_SIZE))
+
+    def queue_write(self, to, data):
+        self.buffer[to].queue_write(data)
+
+    def write_buffer_flush(self):
+        for addr, buf in six.iteritems(self.buffer):
+            while not buf.write_avail:
+                data = buf.dequeue_write()
+                if not data:
+                    break
+                try:
+                    sent, length = 0, len(data)
+                    while sent < length:
+                        sent += self.sendto(data[sent:], addr)
+                except: # pylint: disable=W0702
+                    pass
+                finally:
+                    buf.dequeue_done()
+
+    def read_buffer_fill(self):
+        with self.read_lock:
+            read, addr = self.recvfrom_into(self.read_buf)
+            if read == 0:
+                return 0
+                # TODO : Handle 0-read.
+            self.buffer[addr].extend(self.read_buf[0:read])
+
+class PacketUDPSocket(BufferedUDPSocket):
+    DEFAULT_FAMILY      = socket.AF_INET
+    DEFAULT_TYPE        = socket.SOCK_DGRAM
+
+    DEFAULT_PROTOCOL    = Protocol.NONE
+    DEFAULT_DIRECTION   = Direction.BOTH
+    DEFAULT_PORT        = -1
+    DEFAULT_VERSION     = 0
+
+    def __init__(self, family = None, _type = None, protocol = None, direction = None):
+        if family is None:
+            family = self.DEFAULT_FAMILY
+        if _type is None:
+            _type = self.DEFAULT_TYPE
+        if protocol is None:
+            protocol = self.DEFAULT_PROTOCOL
+        if direction is None:
+            direction = self.DEFAULT_DIRECTION
+        super(PacketUDPSocket, self).__init__(family, _type)
+
+        self.openttd_protocol = protocol
+        self.openttd_direction = direction
+        self.packet_registry = registry.get_packets_dict(protocol, direction)
+
+        self.extra_info = ProtocolInformation(self.DEFAULT_VERSION)
+
+    def process_recv(self):
+        return self.read_buffer_fill()
+
+    def process_recv_full(self):
+        self.process_recv()
+        return self.process_packets()
+
+    def process_send(self):
+        self.process_idle()
+        return self.write_buffer_flush()
+
+    def process_idle(self):
+        remove = [addr for addr, buf in six.iteritems(self.buffer) if not buf.active]
+
+        for addr in remove:
+            del self.buffer[addr]
+
+    def process_packets(self):
+        self.process_idle()
+        packets = []
+        for addr, buf in six.iteritems(self.buffer):
+            header_size = OpenTTDPacket.get_packet_size()
+            if buf.read_avail < header_size:
+                continue
+            
+            with buf as data:
+                while buf.read_avail >= header_size: # While enough data available for a header.
+                    info = OpenTTDPacket.manager.from_data(
+                        data[buf.index:buf.index+header_size].tobytes()
+                        )
+                    if buf.read_avail < info.length:
+                        # Not enough data in buffer to parse the full packet
+                        break
+                    packet_data = data[buf.index + header_size:buf.index + info.length]
+                    buf.index += info.length
+                    packet = self.packet_registry.get(info.packet_id)
+                    if not packet:
+                        # We don't understand this packet.. maybe we should log this.
+                        # TODO: Add Logging
+                        continue
+                    try:
+                        obj = packet.manager.from_data(packet_data.tobytes(), extra = self.extra_info)
+                    except: # pylint: disable=W0702
+                        continue
+                    packets.append((addr, obj))
+        return packets
+
+    def send_packet(self, addr, packet, *args, **kwargs):
+        if isinstance(packet, type):
+            packet = packet(*args, **kwargs)
+
+        data = packet.write(extra=self.extra_info)
+        info = OpenTTDPacket(length = len(data) + OpenTTDPacket.get_packet_size(), packet_id = packet.pid)
+        data = '%s%s' % (info.write(), data)
+        self.queue_write(addr, data)
