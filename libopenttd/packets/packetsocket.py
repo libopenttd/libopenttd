@@ -1,5 +1,6 @@
 import io
 import socket
+import time
 
 from .constants import SEND_MTU
 from .packet import Packet
@@ -91,6 +92,9 @@ class BufferedSocket(socket.socket):
             self.prim_read_buf.extend(self.sec_read_buf[0:read])
         return read
 
+    def _buffer_data_avail(self):
+        return len(self.prim_read_buf)
+
     def _start_memory_buffer(self):
         """
         Prepares the current buffer for reading.
@@ -110,6 +114,8 @@ class BufferedSocket(socket.socket):
         the memory buffer before any other data that might have been
         written to it.
         """
+        if self.mem_buf is None:
+            return
         with self.read_buf_lock:
             new_buffer = bytearray(self.mem_buf[self.mem_buf_idx:])
             new_buffer.extend(self.prim_read_buf)
@@ -163,8 +169,10 @@ class PacketSocket(BufferedSocket):
 
     def process_packets(self):
         try:
-            self._start_memory_buffer()
             header_size = OpenTTDPacket.get_packet_size()
+            if self._buffer_data_avail() < header_size:
+                return
+            self._start_memory_buffer()            
 
             while True:
                 if self.mem_buf_size < self.mem_buf_idx + header_size:
