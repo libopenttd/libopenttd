@@ -21,6 +21,58 @@ class OpenTTDPacket(Packet):
         protocol = Protocol.NONE
         direction = Direction.BOTH
 
+class SocketBuffer(object):
+    def __init__(self,  write_buffer_size):
+        self._write_size = write_buffer_size
+        self.reset()
+
+    def reset(self):
+        self.read_buf = bytearray()
+        self.write_buf = queue.Queue(self.WRITE_BUFFER_QUEUE_SIZE)
+
+        self.mem_buf = None
+        self.mem_buf_idx = 0
+        self.mem_buf_size = 0
+
+        self.lock = Lock()
+
+    def queue_write(self, data):
+        self.prim_write_buf.put(data, True)
+
+    @property
+    def write_avail(self):
+        return not self.prim_write_buf.empty()
+
+    @property
+    def read_avail(self):
+        if self.mem_buf:
+            return self.mem_buf_size - self.mem_buf_idx
+        return len(self.prim_read_buf)
+
+    def __enter__(self):
+        with self.lock:
+            self.mem_buf = memoryview(self.read_buf)
+            self.mem_buf_idx = 0
+            self.mem_buf_size = len(self.mem_buf)
+            self.read_buf = bytearray()
+        return self.mem_buf
+
+    def mark_read(self, amt):
+        self.mem_buf_idx += amt
+
+    def extend(self, data):
+        with self.lock:
+            self.read_buf.extend(data)
+
+    def __exit__(self):
+        with self.lock:
+            tmp_read_buf = bytearray(self.mem_buf[self.mem_buf_idx:])
+            tmp_read_buf.extend(self.read_buf)
+            self.read_buf = tmp_read_buf
+            self.mem_buf = None
+            self.mem_buf_size = 0
+            self.mem_buf_idx = 0
+
 class BufferedSocket(socket.socket):
     """
     BufferedSocket implement's python's socket class and wraps it in such a way
