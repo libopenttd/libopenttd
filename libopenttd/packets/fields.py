@@ -167,15 +167,16 @@ class RepeatingField(Field):
     field_count = 1
     expected_count = 1
 
-
     def is_fixed_length(self):
+        if isinstance(self.field_count, Field):
+            return False
         return all([field.is_fixed_length() for field in self._meta.fields])
 
     def get_field_size(self):
         if not self.is_fixed_length():
             return 0
         else:
-            return sum([field.get_field_size() for field in self._meta.fields])
+            return sum([field.get_field_size() for field in self._meta.fields]) * self.field_count
 
     def __init__(self, fields = None, count = 1, *args, **kwargs):
         super(RepeatingField, self).__init__(*args, **kwargs)
@@ -184,9 +185,13 @@ class RepeatingField(Field):
             for name, field in six.iteritems(fields):
                 field.contribute_to_class(self, name)
         self.field_count = self.expected_count = count
+        if isinstance(count, Field):
+            count.name = "_count_"
 
     def _prepare(self):
         self._meta._prepare(self)
+        if isinstance(self.field_count, Field):
+            self.field_count._prepare()
 
     def to_python(self, value):
         return value
@@ -194,7 +199,13 @@ class RepeatingField(Field):
     def read_bytes(self, data, index, obj_data, extra):
         start = index
         values = []
-        for _ in range(self.field_count):
+        field_count = self.field_count
+        if isinstance(field_count, Field):
+            value = {}
+            increment = field_count.read_bytes(data, index, value, extra)
+            field_count = value.get(field_count.name, 0)
+            index += increment
+        for _ in range(field_count):
             value = {}
             for field in self._meta.parsing_fields:
                 increment = field.read_bytes(data, index, value, extra)
@@ -207,10 +218,13 @@ class RepeatingField(Field):
         return value
 
     def write_bytes(self, data, datastream, extra):
-        if not len(data.get(self.name)) == self.expected_count:
+        if not len(data.get(self.name)) == self.expected_count and not isinstance(self.field_count, Field):
             raise InvalidFieldData("Field %s expected %d items, not %d" % 
                 (self.name, self.expected_count, len(data.get(self.name))))
         data = self.from_python(data.get(self.name))
+        if isinstance(self.field_count, Field):
+            item = {self.field_count.name: len(data)}
+            self.field_count.write_bytes(item, datastream, extra)
         for item in data:
             for field in self._meta.parsing_fields:
                 field.write_bytes(item, datastream, extra)
