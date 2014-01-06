@@ -22,32 +22,49 @@ class OpenTTDPacket(Packet):
         direction = Direction.BOTH
 
 class SocketBuffer(object):
-    def __init__(self,  write_buffer_size):
+    def __init__(self,  write_buffer_size, inactivity_time = 60.0):
         self._write_size = write_buffer_size
-        self.reset()
+        self._inactivity_time = inactivity_time
+        self.lock = Lock()
 
-    def reset(self):
         self.read_buf = bytearray()
-        self.write_buf = queue.Queue(self.WRITE_BUFFER_QUEUE_SIZE)
+        self.write_buf = queue.Queue(self._write_size)
 
         self.mem_buf = None
         self.mem_buf_idx = 0
         self.mem_buf_size = 0
+        self.last_activity = time.time()
 
-        self.lock = Lock()
+    def reset(self):
+        self.read_buf = bytearray()
+        self.write_buf = queue.Queue(self._write_size)
 
-    def queue_write(self, data):
-        self.prim_write_buf.put(data, True)
+        self.mem_buf = None
+        self.mem_buf_idx = 0
+        self.mem_buf_size = 0
+        self.last_activity = time.time()
+
+    def queue_write(self, data, block = True, timeout = None):
+        self.write_buf.put(data, block, timeout)
+
+    def dequeue_write(self, block = False, timeout = None):
+        try:
+            return self.write_buf.get(block, timeout)
+        except queue.Empty:
+            return None
+
+    def dequeue_done(self):
+        self.write_buf.task_done()
 
     @property
     def write_avail(self):
-        return not self.prim_write_buf.empty()
+        return not self.write_buf.empty()
 
     @property
     def read_avail(self):
         if self.mem_buf:
             return self.mem_buf_size - self.mem_buf_idx
-        return len(self.prim_read_buf)
+        return len(self.read_buf)
 
     def __enter__(self):
         with self.lock:
@@ -63,8 +80,20 @@ class SocketBuffer(object):
     def extend(self, data):
         with self.lock:
             self.read_buf.extend(data)
+            self.last_activity = time.time()
 
-    def __exit__(self):
+    @property
+    def index(self):
+        return self.mem_buf_idx
+    @index.setter
+    def index(self, value):
+        self.mem_buf_idx = value
+
+    @property
+    def active(self):
+        return time.time() - self.last_activity <= self._inactivity_time 
+
+    def __exit__(self, type, value, traceback):
         with self.lock:
             tmp_read_buf = bytearray(self.mem_buf[self.mem_buf_idx:])
             tmp_read_buf.extend(self.read_buf)
@@ -87,18 +116,10 @@ class BufferedSocket(socket.socket):
 
     def __init__(self, *args, **kwargs):
         super(BufferedSocket, self).__init__(*args, **kwargs)
-        self.prim_read_buf = bytearray()
-        self.sec_read_buf = bytearray(self.READ_BUFFER_SIZE)
-
-        self.prim_write_buf = queue.Queue(self.WRITE_BUFFER_QUEUE_SIZE)
-
-        self.mem_buf  = None
-        self.mem_buf_idx = 0
-        self.mem_buf_size = 0
-
+        self.buffer = SocketBuffer(self.WRITE_BUFFER_QUEUE_SIZE)
         self._connected = False
-
-        self.read_buf_lock = Lock()
+        self.read_lock = Lock()
+        self.read_buf = bytearray(self.READ_BUFFER_SIZE)
 
     @property
     def connected(self):
@@ -107,10 +128,7 @@ class BufferedSocket(socket.socket):
     def connect(self, *args, **kwargs):
         ret = None
         try:
-            self.mem_buf = None
-            self.prim_read_buf = bytearray()
-            self.sec_read_buf = bytearray(self.READ_BUFFER_SIZE)
-            self.prim_write_buf = queue.Queue(self.WRITE_BUFFER_QUEUE_SIZE)
+            self.buffer.reset()
             ret = super(BufferedSocket, self).connect(*args, **kwargs)
         except:
             raise
@@ -119,62 +137,30 @@ class BufferedSocket(socket.socket):
         return ret
 
     def queue_write(self, data):
-        self.prim_write_buf.put(data, True)
+        self.buffer.queue_write(data)
 
     def write_buffer_flush(self):
-        if not self.prim_write_buf.empty():
-            try:
-                data = self.prim_write_buf.get(False)
-            except queue.Empty:
+        if self.buffer.write_avail:
+            data = self.buffer.dequeue_write()
+            if not data:
                 return
             try:
                 self.sendall(data)
-            except:
+            except: # pylint: disable=W0702
                 self._connected = False
                 # TODO : Handle errors.
             finally:
-                self.prim_write_buf.task_done()
+                self.buffer.dequeue_done()
 
     def read_buffer_fill(self):
-        with self.read_buf_lock:
-            read = self.recv_into(self.sec_read_buf)
+        read = 0
+        with self.read_lock:
+            read = self.recv_into(self.read_buf)
             if read == 0:
                 self._connected = False
                 # TODO : Handle 0-read.
-            self.prim_read_buf.extend(self.sec_read_buf[0:read])
+            self.buffer.extend(self.read_buf[0:read])
         return read
-
-    def _buffer_data_avail(self):
-        return len(self.prim_read_buf)
-
-    def _start_memory_buffer(self):
-        """
-        Prepares the current buffer for reading.
-        This action also prevents the buffer from being written to,
-        so we create a new write-buffer to write to.
-        """
-        with self.read_buf_lock:
-            self.mem_buf = memoryview(self.prim_read_buf)
-            self.mem_buf_size = len(self.mem_buf)
-            self.mem_buf_idx = 0
-            self.prim_read_buf = bytearray()
-
-    def _end_memory_buffer(self):
-        """
-        Indicates we are done reading the memory buffer.
-        This restores the write buffer with the remaining data from
-        the memory buffer before any other data that might have been
-        written to it.
-        """
-        if self.mem_buf is None:
-            return
-        with self.read_buf_lock:
-            new_buffer = bytearray(self.mem_buf[self.mem_buf_idx:])
-            new_buffer.extend(self.prim_read_buf)
-            self.prim_read_buf = new_buffer
-            self.mem_buf = None
-            self.mem_buf_size = 0
-            self.mem_buf_idx = 0
 
 class PacketSocket(BufferedSocket):
     DEFAULT_FAMILY      = socket.AF_INET
@@ -220,38 +206,32 @@ class PacketSocket(BufferedSocket):
         return self.write_buffer_flush()
 
     def process_packets(self):
-        try:
-            header_size = OpenTTDPacket.get_packet_size()
-            if self._buffer_data_avail() < header_size:
-                return
-            self._start_memory_buffer()            
-
-            while True:
-                if self.mem_buf_size < self.mem_buf_idx + header_size:
-                    # Not enough data in buffer to parse a header
-                    break
+        header_size = OpenTTDPacket.get_packet_size()
+        if self.buffer.read_avail < header_size:
+            return []
+        packets = []
+        with self.buffer as data:
+            while self.buffer.read_avail >= header_size: # While enough data available for a header.
                 info = OpenTTDPacket.manager.from_data(
-                        self.mem_buf[self.mem_buf_idx:self.mem_buf_idx+header_size].tobytes()
-                        )
-                if self.mem_buf_size < self.mem_buf_idx + info.length:
+                    data[self.buffer.index:self.buffer.index+header_size].tobytes()
+                    )
+                if self.buffer.read_avail < info.length:
                     # Not enough data in buffer to parse the full packet
                     break
-                packet_data = self.mem_buf[self.mem_buf_idx + header_size:self.mem_buf_idx + info.length]
-                self.mem_buf_idx += info.length
+                packet_data = data[self.buffer.index + header_size:self.buffer.index + info.length]
+                self.buffer.index += info.length
                 packet = self.packet_registry.get(info.packet_id)
                 if not packet:
                     # We don't understand this packet.. maybe we should log this.
                     # TODO: Add Logging
                     continue
                 try:
-                    obj = packet.manager.from_data(packet_data.tobytes(), extra=self.extra_info)
+                    obj = packet.manager.from_data(packet_data.tobytes(), extra = self.extra_info)
                 except: # pylint: disable=W0702
-                    # Something went wrong while parsing this packet.. maybe we should log this.
-                    # TODO: Add Logging
                     continue
-                yield obj
-        finally:
-            self._end_memory_buffer()
+                packets.append(obj)
+                print self.buffer.read_avail
+        return packets
 
     def send_packet(self, packet, *args, **kwargs):
         if isinstance(packet, type):
