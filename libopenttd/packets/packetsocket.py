@@ -149,7 +149,6 @@ class PacketSocket(BufferedSocket):
             if port is None:
                 port = self.DEFAULT_PORT
             ip = (ip, port)
-        print repr(ip)
         return super(PacketSocket, self).connect(ip)
 
     def process_recv(self):
