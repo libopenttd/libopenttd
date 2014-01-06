@@ -2,8 +2,12 @@
 # constant names and values taken from openttd @ src/network/core/config.h
 #
 
+NETWORK_MASTER_SERVER_PORT      = 3978  ###< The default port of the master server (UDP)
+NETWORK_CONTENT_SERVER_PORT     = 3978  ###< The default port of the content server (TCP)
+NETWORK_CONTENT_MIRROR_PORT     =   80  ###< The default port of the content mirror (TCP)
 NETWORK_DEFAULT_PORT            = 3979  ###< The default port of the game server (TCP & UDP)
 NETWORK_ADMIN_PORT              = 3977  ###< The default port for admin network
+NETWORK_DEFAULT_DEBUGLOG_PORT   = 3982  ###< The default port debug-log is sent to (TCP)
 
 SEND_MTU                        = 1460  ###< Number of bytes we can pack in a single packet
 
@@ -24,7 +28,7 @@ NETWORK_CLIENTS_LENGTH          =  200  ###< The maximum length for the list of 
                                         ###  in bytes including '\0'
 NETWORK_CLIENT_NAME_LENGTH      =   25  ###< The maximum length of a client's name, in bytes including '\0'
 NETWORK_RCONCOMMAND_LENGTH      =  500  ###< The maximum length of a rconsole command, in bytes including '\0'
-NETWORK_GAMESCRIPT_JSON_LENGTH  = 1450  ###< The maximum length of a gamescript json string, in bytes including '\0'
+NETWORK_GAMESCRIPT_JSON_LENGTH  = SEND_MTU - 3 ###< The maximum length of a gamescript json string, in bytes including '\0'
 NETWORK_CHAT_LENGTH             =  900  ###< The maximum length of a chat message, in bytes including '\0'
 
 NETWORK_GRF_NAME_LENGTH         =   80  ###< Maximum length of the name of a GRF
