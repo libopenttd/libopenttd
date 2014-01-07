@@ -183,13 +183,14 @@ class RepeatingField(Field):
         else:
             return sum([field.get_field_size() for field in self._meta.fields]) * self.field_count
 
-    def __init__(self, fields = None, count = 1, *args, **kwargs):
+    def __init__(self, fields = None, count = no_default, *args, **kwargs):
         super(RepeatingField, self).__init__(*args, **kwargs)
         self._meta = PacketOptions(None, None)
         if isinstance(fields, dict):
             for name, field in six.iteritems(fields):
                 field.contribute_to_class(self, name)
-        self.field_count = self.expected_count = count
+        if count is not no_default:
+            self.field_count = self.expected_count = count
         if isinstance(count, Field):
             count.name = "_count_"
 
@@ -223,7 +224,8 @@ class RepeatingField(Field):
         return value
 
     def write_bytes(self, data, datastream, extra):
-        if not len(data.get(self.name, self.default_value)) == self.expected_count and not isinstance(self.field_count, Field):
+        if not len(data.get(self.name, self.default_value)) == self.expected_count and \
+                not isinstance(self.field_count, Field):
             raise InvalidFieldData("Field %s expected %d items, not %d" % 
                 (self.name, self.expected_count, len(data.get(self.name))))
         data = self.from_python(data.get(self.name))
@@ -328,6 +330,7 @@ class DictField(LoopingField):
 class StructField(Field):
     struct_type = None
     field_count = 1
+    consume_amount = 1
     default_value = 0
 
     _structCache = {}
@@ -356,10 +359,11 @@ class StructField(Field):
         fmt = '<%s' % fmt
         return Struct(fmt)
 
-    def __init__(self, count = 1, is_version_identifier = False, *args, **kwargs):
+    def __init__(self, count = no_default, is_version_identifier = False, *args, **kwargs):
         super(StructField, self).__init__(*args, **kwargs)
         self.struct = None
-        self.field_count = count
+        if count is not no_default:
+            self.field_count *= count
         self.length = 0
         self.is_version_identifier = is_version_identifier
         if is_version_identifier:
@@ -371,10 +375,10 @@ class StructField(Field):
 
     def _prepare(self):
         fmt = self.get_struct_type()
-        amt = self.field_count
+        amt = self.field_count * self.consume_amount
         for neigh in self.neighbours:
             fmt += neigh.get_struct_type()
-            amt += neigh.field_count
+            amt += (neigh.field_count * neigh.consume_amount)
         self.struct = StructField.get_struct(fmt)
         self.length = self.struct.size
         self.total_fields = amt
@@ -393,7 +397,10 @@ class StructField(Field):
                         (field.name, field.field_count, len(value)))
                 values.extend([field.from_python(val) for val in value])
             else:
-                values.append(field.from_python(value))
+                if field.consume_amount > 1:
+                    values.extend(field.from_python(value))
+                else:
+                    values.append(field.from_python(value))
         if len(values):
             datastream.extend(self.struct.pack(*values))
 
@@ -407,12 +414,15 @@ class StructField(Field):
         i = 0
         for field in self.get_fieldlist(extra.version):
             if field.field_count == 1:
-                obj_data[field.name] = field.to_python(unpack[i])
+                if field.consume_amount > 1:
+                    obj_data[field.name] = field.to_python(unpack[i:i+field.consume_amount])
+                else:
+                    obj_data[field.name] = field.to_python(unpack[i])
             else:
                 obj_data[field.name] = [field.to_python(x) for x in unpack[i:i+field.field_count]]
             if field.is_version_identifier:
                 extra.version = obj_data[field.name]
-            i += field.field_count
+            i += (field.field_count * field.consume_amount)
         if i:
             return self.length
         return 0
@@ -495,3 +505,13 @@ class SLongLongField(StructField):
     validate = _between(-0x8000000000000000, 0x7FFFFFFFFFFFFFFF)
 
 Int64Field = SLongLongField
+
+class MD5Field(StructField):
+    consume_amount = 16
+    struct_type = 'B' * 16
+
+    def to_python(self, value):
+        return ''.join(['%02X' % val for val in value])
+
+    def from_python(self, value):
+        return [int(value[i:i+2], 16) for i in range(0, len(value), 2)]
