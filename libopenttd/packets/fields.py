@@ -31,6 +31,8 @@ def _between(minimum, maximum):
         return between(value, minimum, maximum)
     return _inner
 
+no_default = object()
+
 class Field(FieldBase):
     default_value   = None
     validators      = None
@@ -45,8 +47,10 @@ class Field(FieldBase):
         return 0
 
     def __init__(self, ordering = -1, validators = None, is_next = False, 
-                required_version = None, *args, **kwargs):
+                required_version = None, default = no_default, *args, **kwargs):
         super(Field, self).__init__(ordering = ordering, *args, **kwargs)
+        if default is not no_default:
+            self.default_value = default
         self.neighbours = []
         self.is_next = is_next
         self.required_version = required_version
