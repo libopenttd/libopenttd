@@ -10,7 +10,7 @@ class Protocol(EnumHelper):
     is_flag             = True
     ADMIN               = 0x01
     CLIENT              = 0x02
-    MSU                 = 0x04
+    QUERY               = 0x04
 
     NONE                = 0xFF
 
