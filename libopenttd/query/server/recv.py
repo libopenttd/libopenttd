@@ -17,7 +17,7 @@ class GameInformation(Packet):
         count       = packets.UInt8Field(ordering=-1),
         fields      = {
             "id"    : packets.UInt32Field(ordering=1),
-            "md5"   : packets.UInt8Field(ordering=2, count=16),
+            "md5"   : packets.MD5Field(ordering=2),
         })
     game_date       = packets.DateField(ordering=3)
     start_date      = packets.DateField(ordering=4)
@@ -75,6 +75,6 @@ class NewGRF(Packet):
         count       = packets.UInt8Field(ordering=-1),
         fields      = {
             "id"    : packets.UInt32Field(ordering=1),
-            "md5"   : packets.UInt8Field(ordering=2, count=16),
+            "md5"   : packets.MD5Field(ordering=2),
             "name"  : packets.StringField(ordering=3),
         })

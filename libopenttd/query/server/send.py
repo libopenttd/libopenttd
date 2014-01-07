@@ -24,7 +24,7 @@ class GetNewGRFList(Packet):
         count       = packets.UInt8Field(ordering=-1),
         fields      = {
             "id"    : packets.UInt32Field(ordering=1),
-            "md5"   : packets.UInt8Field(ordering=2, count=16),
+            "md5"   : packets.MD5Field(ordering=2),
         })
 
 NewGRF = GetNewGRFList
