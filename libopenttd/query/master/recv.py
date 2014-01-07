@@ -10,7 +10,7 @@ class MasterServerRecvPacket(QueryPacket):
         abstract = True
 Packet = MasterServerRecvPacket 
 
-class Register(Packet):
+class Registered(Packet):
     pid = 5
 
 class ServerList(Packet):
@@ -18,3 +18,4 @@ class ServerList(Packet):
 
 class SessionKey(Packet):
     pid  = 11
+    session_key = packets.UInt64Field()
