@@ -48,6 +48,7 @@ class SocketBuffer(object):
 
     def queue_write(self, data, block = True, timeout = None):
         self.write_buf.put(data, block, timeout)
+        self.last_activity = time.time()
 
     def dequeue_write(self, block = False, timeout = None):
         try:
@@ -256,7 +257,7 @@ class BufferedUDPSocket(BufferedSocket):
 
     def write_buffer_flush(self):
         for addr, buf in six.iteritems(self.buffer):
-            while not buf.write_avail:
+            while buf.write_avail:
                 data = buf.dequeue_write()
                 if not data:
                     break
