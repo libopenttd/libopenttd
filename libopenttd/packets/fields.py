@@ -1,7 +1,7 @@
 from .base import FieldBase, PacketOptions
 from .constants import NETWORK_GAMESCRIPT_JSON_LENGTH
 from .exceptions import InvalidReturnCount, InvalidFieldData, InvalidPacketLayout
-from libopenttd.utils import six, force_text
+from libopenttd.utils import six, force_text, ipaddr
 from libopenttd.utils.six.moves import range
 
 from struct import Struct
@@ -165,6 +165,32 @@ class JsonField(StringField):
         if not isinstance(value, six.string_types):
             value = self.from_python(value)
         return len(value) < NETWORK_GAMESCRIPT_JSON_LENGTH
+
+class IPAddrField(Field):
+    field_count = 1
+    expected_count = 1
+    default_value = ipaddr.IPAddress('0.0.0.0')
+
+    READ_LENGTHS = {1: 4, 2: 16}
+    WRITE_LENGTHS = {4: 1, 16: 2}
+
+    def to_python(self, value):
+        return ipaddr.IPAddress(ipaddr.Bytes(value))
+
+    def read_bytes(self, data, index, obj_data, extra):
+        ip_type = getattr(extra, 'ipaddr_type', 1)
+        ip_len = self.READ_LENGTHS[ip_type]
+        obj_data[self.name] = self.to_python(data[index:index+ip_len])
+        return ip_len
+
+    def from_python(self, value):
+        if not isinstance(value, (ipaddr.IPv4Address, ipaddr.IPv6Address)):
+            return value
+        return value.packed
+
+    def write_bytes(self, data, datastream, extra):
+        data = self.from_python(data.get(self.name, self.default_value))
+        datastream.extend(data)
 
 class RepeatingField(Field):
     _meta       = None
@@ -515,3 +541,14 @@ class MD5Field(StructField):
 
     def from_python(self, value):
         return [int(value[i:i+2], 16) for i in range(0, len(value), 2)]
+
+class IPAddrPrefixField(UInt8Field):
+    def __init__(self, required_version = None, *args, **kwargs):
+        kwargs['required_version'] = -3
+        super(IPAddrPrefixField, self).__init__(*args, **kwargs)
+
+    def read_bytes(self, data, index, obj_data, extra):
+        length = super(IPAddrPrefixField, self).read_bytes(data, index, obj_data, extra)
+        version = obj_data.get(self.name, 1)
+        extra.ipaddr_type = version
+        return length
