@@ -2,6 +2,9 @@
 # constant names and values taken from openttd @ src/network/core/config.h
 #
 NETWORK_MASTER_SERVER_WELCOME_MESSAGE = "OpenTTDRegister"
+NETWORK_MASTER_SERVER_HOST      = "master.openttd.org"
+NETWORK_CONTENT_SERVER_HOST     = "content.openttd.org"
+NETWORK_CONTENT_MIRROR_HOST     = "binaries.openttd.org"
 
 NETWORK_MASTER_SERVER_PORT      = 3978  ###< The default port of the master server (UDP)
 NETWORK_CONTENT_SERVER_PORT     = 3978  ###< The default port of the content server (TCP)
