@@ -138,3 +138,8 @@ class Colour(EnumHelper):
     COLOUR_WHITE        = 0x0F
     COLOUR_END          = 0x10
     INVALID_COLOUR      = 0xFF
+
+class ServerListType(EnumHelper):
+    IPV4                = 0x00
+    IPV6                = 0x01
+    AUTODETECT          = 0x02
