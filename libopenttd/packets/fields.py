@@ -132,7 +132,7 @@ class StringField(Field):
 
     def write_bytes(self, data, datastream, extra):
         for field in self.get_fieldlist(extra.version):
-            value = data.get(field.name)
+            value = data.get(field.name, self.default_value)
             datastream.extend(field.from_python(value))
 
     def to_python(self, value):
@@ -170,6 +170,7 @@ class RepeatingField(Field):
     _meta       = None
     field_count = 1
     expected_count = 1
+    default_value = []
 
     def is_fixed_length(self):
         if isinstance(self.field_count, Field):
@@ -222,7 +223,7 @@ class RepeatingField(Field):
         return value
 
     def write_bytes(self, data, datastream, extra):
-        if not len(data.get(self.name)) == self.expected_count and not isinstance(self.field_count, Field):
+        if not len(data.get(self.name, self.default_value)) == self.expected_count and not isinstance(self.field_count, Field):
             raise InvalidFieldData("Field %s expected %d items, not %d" % 
                 (self.name, self.expected_count, len(data.get(self.name))))
         data = self.from_python(data.get(self.name))
@@ -234,6 +235,7 @@ class RepeatingField(Field):
                 field.write_bytes(item, datastream, extra)
 
 class GroupedField(RepeatingField):
+    default_value = {}
     def __init__(self, fields = None, *args, **kwargs):
         super(GroupedField, self).__init__(*args, **kwargs)
         self._meta = PacketOptions(None, None)
@@ -254,6 +256,7 @@ class GroupedField(RepeatingField):
 class LoopingField(Field):
     _meta       = None
     next_field  = None
+    default_value = []
 
     def __init__(self, fields = None, *args, **kwargs):
         super(LoopingField, self).__init__(*args, **kwargs)
@@ -295,9 +298,10 @@ class LoopingField(Field):
         return value
 
     def write_bytes(self, data, datastream, extra):
+        data = self.from_python(data.get(self.name, self.default_value))
+
         if not data:
             return  self.next_field.write_bytes({self.next_field.name: False})
-        data = self.from_python(data.get(self.name))
         last_index = len(data) - 1
         self.next_field.write_bytes({self.next_field.name: True}, datastream, extra)
         for i, item in enumerate(data):
@@ -382,7 +386,7 @@ class StructField(Field):
     def write_bytes(self, data, datastream, extra):
         values = []
         for field in self.get_fieldlist(extra.version):
-            value = data.get(field.name)
+            value = data.get(field.name, field.default_value)
             if field.field_count != 1:
                 if not len(value) == field.field_count:
                     raise InvalidFieldData("Field '%s' expected %d items but only received %d" % 

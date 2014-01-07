@@ -49,7 +49,7 @@ class PacketManager(object):
         if extra is None:
             extra = ProtocolInformation()
 
-        data = dict([(field.name, getattr(packet, field.name, None)) for field in self.opts.fields])
+        data = dict([(field.name, getattr(packet, field.name, field.default_value)) for field in self.opts.fields])
 
         datastream = bytearray()
         for field in self.opts.parsing_fields:
