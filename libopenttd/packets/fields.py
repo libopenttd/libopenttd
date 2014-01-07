@@ -1,7 +1,7 @@
 from .base import FieldBase, PacketOptions
 from .constants import NETWORK_GAMESCRIPT_JSON_LENGTH
 from .exceptions import InvalidReturnCount, InvalidFieldData, InvalidPacketLayout
-from libopenttd.utils import six
+from libopenttd.utils import six, force_text
 from libopenttd.utils.six.moves import range
 
 from struct import Struct
@@ -132,7 +132,7 @@ class StringField(Field):
             datastream.extend(field.from_python(value))
 
     def to_python(self, value):
-        return six.text_type(value.rstrip('\x00'))
+        return force_text(value).rstrip('\x00')
 
     def read_bytes(self, data, index, obj_data, extra):
         start = index
