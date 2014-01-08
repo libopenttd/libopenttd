@@ -118,6 +118,7 @@ class BufferedSocket(socket.socket):
 
     READ_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE / 2
     WRITE_BUFFER_QUEUE_SIZE = 64
+    PACKET_BURST_SIZE = 10
 
     def __init__(self, *args, **kwargs):
         super(BufferedSocket, self).__init__(*args, **kwargs)
@@ -145,7 +146,9 @@ class BufferedSocket(socket.socket):
         self.buffer.queue_write(data)
 
     def write_buffer_flush(self):
+        i = 0
         while self.buffer.write_avail:
+            i += 1
             data = self.buffer.dequeue_write()
             if not data:
                 break
@@ -156,6 +159,8 @@ class BufferedSocket(socket.socket):
                 # TODO : Handle errors.
             finally:
                 self.buffer.dequeue_done()
+            if i >= self.PACKET_BURST_SIZE and self.PACKET_BURST_SIZE != 0:
+                break
 
     def read_buffer_fill(self):
         read = 0
@@ -248,6 +253,8 @@ class PacketSocket(BufferedSocket):
         self.queue_write(data)
 
 class BufferedUDPSocket(BufferedSocket):
+    PACKET_BURST_SIZE = 10
+
     def __init__(self, *args, **kwargs):
         super(BufferedUDPSocket, self).__init__(*args, **kwargs)
         self.buffer = defaultdict(lambda: SocketBuffer(self.WRITE_BUFFER_QUEUE_SIZE))
@@ -256,8 +263,10 @@ class BufferedUDPSocket(BufferedSocket):
         self.buffer[to].queue_write(data)
 
     def write_buffer_flush(self):
+        i = 0
         for addr, buf in six.iteritems(self.buffer):
             while buf.write_avail:
+                i += 1
                 data = buf.dequeue_write()
                 if not data:
                     break
@@ -269,6 +278,8 @@ class BufferedUDPSocket(BufferedSocket):
                     pass
                 finally:
                     buf.dequeue_done()
+                if i >= self.PACKET_BURST_SIZE and self.PACKET_BURST_SIZE != 0:
+                    return
 
     def read_buffer_fill(self):
         with self.read_lock:
