@@ -34,9 +34,10 @@ POLL_MOD = 1000.0 / POLL_MOD
 from optparse import OptionParser
 
 PARSER = OptionParser()
-PARSER.add_option("-t", "--timeout", action="store", type="float", dest="timeout", default=5000, 
+PARSER.add_option("-t", "--timeout", action="store", type="int", dest="timeout", default=5000, 
     help="The amount of time (in ms) to wait (in total) for packets to arrive")
 PARSER.add_option("-d", "--debug", action="store_true", dest="debug", default=False)
+PARSER.add_option("-a", "--attempts", action="store", type="int", dest="attempts", default=2)
 
 def debug(msg, *args):
     print msg % args
@@ -90,15 +91,15 @@ def statistics(servers):
     debug("          Passworded: %d", passworded)
     debug("Players:")
     debug("               Total: %d", total_players)
-    debug("             Average: %d", average_players)
+    debug("             Average: %.2f", average_players)
     debug("                 Max: %d", max_players)
     debug("Spectators:")
     debug("               Total: %d", total_spectators)
-    debug("             Average: %d", average_spectators)
+    debug("             Average: %.2f", average_spectators)
     debug("                 Max: %d", max_spectators)
     debug("Companies:")
     debug("               Total: %d", total_companies)
-    debug("             Average: %d", average_companies)
+    debug("             Average: %.2f", average_companies)
     debug("                 Max: %d", max_companies)
     debug("Versions:")
     for version, amt in versions.items():
@@ -115,10 +116,9 @@ def main():
     global log, options
     opts, _ = PARSER.parse_args()
     options = opts
-    options.timeout = float(options.timeout)
     log = debug if options.debug else nodebug
     quick_info()
-    listing = ServerList(options.timeout, log)
+    listing = ServerList(float(options.timeout), log, float(options.attempts))
     log("Querying master server for servers")
     listing.run()
     statistics(listing.serverlist.values())
@@ -129,13 +129,18 @@ class ServerInfo(object):
     def __init__(self, addr):
         self.addr = addr
         self.info = None
+        self.added = millis()
+
+    @property
+    def age(self):
+        return millis() - self.added
 
     @property
     def has_info(self):
         return self.info is not None
 
 class ServerList(object):
-    def __init__(self, timeout = 5000.0, logger = nodebug):
+    def __init__(self, timeout = 5000.0, logger = nodebug, attempts = 2.0):
         self.poll = poll()
         self.sock = MasterServerSocket()
         self.poll.register(self.sock.fileno(), POLLIN | POLLOUT | POLLHUP | POLLERR | POLLPRI)
@@ -146,6 +151,7 @@ class ServerList(object):
         self.serverlist = {}
         self.max_wait = float(timeout)
         self.log = logger
+        self.attempts = attempts
 
     def run(self):
         start = now = millis()
@@ -174,6 +180,17 @@ class ServerList(object):
                     break
             packets = self.sock.process_packets()
             self.process_packets(packets)
+            self.process_stale()
+            time.sleep(0.0001)
+
+    def process_stale(self):
+        for item in self.serverlist.values():
+            if item.has_info:
+                continue
+            if item.age > self.max_wait / self.attempts:
+                item.added = millis()
+                self.sock.send_packet(item.addr, s_send.ServerInformation())
+                break
 
     def process_msu_packet(self, packet):
         if isinstance(packet, m_recv.ServerList):
